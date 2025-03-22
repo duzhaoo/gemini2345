@@ -14,12 +14,11 @@ let tokenExpireTime = 0;
 
 /**
  * 获取飞书访问令牌
- * @param {boolean} [forceRefresh=false] 是否强制刷新令牌
  * @returns {Promise<string>} 访问令牌
  */
-export async function getAccessToken(forceRefresh: boolean = false) {
-  // 检查缓存的token是否有效，除非要求强制刷新
-  if (!forceRefresh && accessToken && tokenExpireTime > Date.now()) {
+export async function getAccessToken() {
+  // 检查缓存的token是否有效
+  if (accessToken && tokenExpireTime > Date.now()) {
     console.log(`getAccessToken: 使用缓存的访问令牌，剩余有效期: ${Math.round((tokenExpireTime - Date.now()) / 1000)}秒`);
     return accessToken;
   }
@@ -288,12 +287,6 @@ export async function saveImageRecord(imageData: {
     try {
       console.log(`saveImageRecord: 开始POST请求: ${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`);
       
-      // 记录完整的请求数据用于调试
-      console.log(`saveImageRecord: 发送的请求数据:`, JSON.stringify({
-        url: `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
-        fields: fields
-      }, null, 2));
-      
       const response = await axios.post(
         `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
         {
@@ -308,63 +301,27 @@ export async function saveImageRecord(imageData: {
           validateStatus: function (status) {
             // 接受所有状态码，手动处理错误
             return true;
-          },
-          // 添加额外的请求配置以提高稳定性
-          maxContentLength: 10 * 1024 * 1024, // 10MB
-          maxBodyLength: 10 * 1024 * 1024     // 10MB
+          }
         }
       );
       
       console.log(`saveImageRecord: 收到响应，HTTP状态码: ${response.status}, 状态文本: ${response.statusText}`);
       console.log(`saveImageRecord: 响应头: ${JSON.stringify(response.headers || {})}`);
       
-      // 分析和记录原始响应内容
-      let originalResponseData = null;
-      
-      // 保存原始响应数据以便调试
-      if (response.data) {
-        originalResponseData = typeof response.data === 'string' 
-          ? response.data 
-          : JSON.stringify(response.data);
-        
-        console.log(`saveImageRecord: 原始响应类型: ${typeof response.data}`);
-        console.log(`saveImageRecord: 原始响应前300字符: 
-${originalResponseData.substring(0, 300)}...`);
-      } else {
-        console.log(`saveImageRecord: 响应数据为空`);
-      }
-      
-      // 处理字符串响应并解析为JSON
+      // 分析响应内容
       if (typeof response.data === 'string') {
         try {
-          // 尝试清理响应字符串，处理可能的前导/尾随字符
-          let cleanResponseData = response.data.trim();
-          
-          // 检查是否是HTML或错误消息
-          if (cleanResponseData.startsWith('<') || cleanResponseData.startsWith('An error occurred')) {
-            throw new Error(`收到非JSON格式响应: ${cleanResponseData.substring(0, 100)}...`);
-          }
-          
-          // 尝试移除任何非JSON前缀
-          const jsonStartIndex = cleanResponseData.indexOf('{');
-          if (jsonStartIndex > 0) {
-            console.warn(`saveImageRecord: 发现非JSON前缀，尝试移除前${jsonStartIndex}个字符`);
-            cleanResponseData = cleanResponseData.substring(jsonStartIndex);
-          }
-          
-          // 尝试解析JSON
-          response.data = JSON.parse(cleanResponseData);
+          response.data = JSON.parse(response.data);
           console.log(`saveImageRecord: 成功将字符串响应解析为JSON`);
         } catch (parseError) {
           console.error(`saveImageRecord: 无法解析响应为JSON: ${parseError.message}`);
-          console.error(`saveImageRecord: 原始响应详情:`, originalResponseData);
+          console.error(`saveImageRecord: 原始响应前200字符: ${response.data.substring(0, 200)}...`);
           
-          // 返回详细错误信息，但不中断流程
+          // 返回错误，但不中断流程
           return {
             record_id: 'error',
             error: true,
-            errorMessage: `非JSON响应: ${parseError.message}`,
-            originalResponse: originalResponseData?.substring(0, 200) || '无响应数据'
+            errorMessage: `非JSON响应: ${response.data.substring(0, 100)}...`
           };
         }
       }
@@ -404,83 +361,19 @@ ${originalResponseData.substring(0, 300)}...`);
     } catch (apiError) {
       console.error(`saveImageRecord: 请求飞书API出错:`, apiError.message);
       
-      // 保存详细的错误信息用于调试
-      let errorDetails: Record<string, any> = {
-        message: apiError.message,
-        stack: apiError.stack
-      };
-      
       if (apiError.response) {
         console.error(`saveImageRecord: 错误响应状态: ${apiError.response.status}`);
-        
-        // 安全地记录错误响应内容
-        let responseDataForLog = '';
-        try {
-          responseDataForLog = typeof apiError.response.data === 'string' 
-            ? apiError.response.data.substring(0, 500) 
-            : JSON.stringify(apiError.response.data, null, 2);
-        } catch (logError) {
-          responseDataForLog = `[无法序列化响应数据: ${logError.message}]`;
-        }
-        
-        console.error(`saveImageRecord: 错误响应内容: ${responseDataForLog}`);
-        
-        errorDetails.responseStatus = apiError.response.status;
-        errorDetails.responseData = responseDataForLog;
-        errorDetails.responseHeaders = apiError.response.headers;
+        console.error(`saveImageRecord: 错误响应内容:`, apiError.response.data);
       }
       
       if (apiError.request) {
         console.error(`saveImageRecord: 请求已发送但无响应，可能是网络问题`);
-        errorDetails.requestSent = true;
-        errorDetails.noResponse = true;
-      }
-      
-      // 添加重试逻辑
-      // 如果是网络问题，可以考虑重试
-      if (!apiError.response && apiError.request) {
-        console.log(`saveImageRecord: 尝试重新发送请求...`);
-        try {
-          // 简单的延迟后重试
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // 重新获取token以防过期
-          const refreshToken = await getAccessToken(true);
-          
-          const retryResponse = await axios.post(
-            `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
-            { fields },
-            {
-              headers: {
-                'Authorization': `Bearer ${refreshToken}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 30000,
-              validateStatus: () => true
-            }
-          );
-          
-          if (retryResponse.status === 200 && retryResponse.data && retryResponse.data.code === 0) {
-            console.log(`saveImageRecord: 重试成功!`);
-            return {
-              record_id: retryResponse.data.data.record_id,
-              retried: true
-            };
-          } else {
-            console.error(`saveImageRecord: 重试失败, 状态码: ${retryResponse.status}`);
-          }
-        } catch (retryError) {
-          console.error(`saveImageRecord: 重试失败:`, retryError.message);
-          errorDetails.retryFailed = true;
-          errorDetails.retryError = retryError.message;
-        }
       }
       
       return {
         record_id: 'error',
         error: true,
-        errorMessage: `请求错误: ${apiError.message}`,
-        errorDetails: JSON.stringify(errorDetails)
+        errorMessage: `请求错误: ${apiError.message}`
       };
     }
   } catch (error) {

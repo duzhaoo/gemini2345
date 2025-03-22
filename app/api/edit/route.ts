@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
     }
     
     try {
-      // 从飞书URL提取图片ID或fileToken
+      // 从飞书URL提取图片ID
       currentImageId = await extractImageIdFromUrl(imageUrl);
       
       if (!currentImageId) {
@@ -312,18 +312,11 @@ export async function POST(req: NextRequest) {
       // 获取图片记录和数据
       const { imageData, mimeType, imageRecord } = await fetchImageFromFeishu(currentImageId);
       
-      // 设置父ID和类型 - 使用图片记录的实际ID，而不是fileToken
-      parentId = imageRecord.id; // 不再使用currentImageId，它只是fileToken
+      // 设置父ID和类型
+      parentId = currentImageId;
       isUploadedImage = imageRecord.type === "uploaded";
       
-      console.log("图片详细信息:", { 
-        imageUrl,
-        fileToken: currentImageId,
-        实际ID: imageRecord.id,
-        父ID: parentId, 
-        类型: imageRecord.type,
-        isUploadedImage
-      });
+      console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage });
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);
@@ -353,42 +346,17 @@ export async function POST(req: NextRequest) {
       
       // 保存生成的图片
       try {
-        // 确定要使用的rootParentId，优先使用原图片的rootParentId，如果不存在再使用原图片的id
-        const rootParentIdToUse = imageRecord.rootParentId && imageRecord.rootParentId !== '' 
-          ? imageRecord.rootParentId 
-          : imageRecord.id;
-          
-        console.log("图片编辑关系信息:", {
-          原图片ID: imageRecord.id,
-          原图片rootParentId: imageRecord.rootParentId,
-          将使用的rootParentId: rootParentIdToUse,
-          fileToken: currentImageId
-        });
-        
-        console.log("开始调用saveImage保存编辑后的图片, 参数:", {
-          promptLength: prompt.length,
-          mimeType: responseMimeType,
-          options: { 
-            isUploadedImage,
-            rootParentId: rootParentIdToUse,
-            isVercelEnv: true
-          },
-          parentId: imageRecord.id  // 使用原图片的实际ID作为父ID
-        });
-        
         metadata = await saveImage(
           generatedImageData,
           prompt,
           responseMimeType,
           { 
             isUploadedImage,
-            rootParentId: rootParentIdToUse,  // 使用正确的rootParentId
+            rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
             isVercelEnv: true  // 传递Vercel环境标志
           },  
-          imageRecord.id  // 使用原图片的实际ID作为父ID，而不是fileToken
+          currentImageId  // 传递当前图片ID作为直接父ID
         );
-        
-        console.log("保存图片返回的metadata:", JSON.stringify(metadata, null, 2));
       } catch (saveError) {
         console.error(`保存图片时发生错误:`, saveError);
         return NextResponse.json({
@@ -412,29 +380,15 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      // 验证返回数据完整性
-      const responseData = {
-        id: metadata?.id || "",
-        url: metadata?.url || "",
-        prompt: prompt,
-        textResponse: textResponse || ""
-      };
-      
-      console.log("返回给前端的数据:", JSON.stringify(responseData, null, 2));
-      
-      // 检查关键字段
-      if (!responseData.url) {
-        console.warn("警告: 返回给前端的URL为空!");
-      }
-      
-      if (!responseData.id) {
-        console.warn("警告: 返回给前端的ID为空!");
-      }
-      
       // 返回成功响应
       return NextResponse.json({
         success: true,
-        data: responseData
+        data: {
+          id: metadata?.id || "",
+          url: metadata?.url || "",
+          prompt: prompt,
+          textResponse: textResponse || ""
+        }
       } as ApiResponse);
       
     } catch (error: any) {
