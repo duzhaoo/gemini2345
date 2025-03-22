@@ -62,22 +62,11 @@ export async function saveImage(
     mimeType,
     size: Buffer.from(imageData, 'base64').length,
     url: `/generated-images/${filename}`,
-    type: options.isUploadedImage ? "uploaded" : "generated" // 添加类型字段，标识是上传的图片还是生成的图片
+    type: options.isUploadedImage ? "uploaded" : "generated", // 添加类型字段，标识是上传的图片还是生成的图片
+    // 确保parentId和rootParentId不为空，默认使用当前图片的id
+    parentId: parentId || id,
+    rootParentId: options.rootParentId || parentId || id
   };
-  
-  // 如果提供了parentId，将其添加到元数据中
-  if (parentId) {
-    metadata.parentId = parentId;
-  }
-  
-  // 如果提供了rootParentId，将其添加到元数据中
-  if (options.rootParentId) {
-    metadata.rootParentId = options.rootParentId;
-  } 
-  // 如果上传图片被编辑，将其自身ID作为rootParentId
-  else if (options.isUploadedImage && parentId) {
-    metadata.rootParentId = parentId;
-  }
   
   try {
     // 只在非Vercel环境中保存到本地文件系统
@@ -118,7 +107,7 @@ export async function saveImage(
       fileToken: fileInfo.fileToken,
       prompt,
       timestamp: new Date().getTime(),
-      parentId,
+      parentId: metadata.parentId,
       rootParentId: metadata.rootParentId, // 传递rootParentId
       type: metadata.type // 传递图片类型字段
     });
