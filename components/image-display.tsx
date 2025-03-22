@@ -6,9 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface ImageDisplayProps {
   imageUrl: string | null;
+  isVercelEnv?: boolean;
 }
 
-export function ImageDisplay({ imageUrl }: ImageDisplayProps) {
+export function ImageDisplay({ imageUrl, isVercelEnv }: ImageDisplayProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [imgSrc, setImgSrc] = useState<string | null>(null);
 
@@ -22,13 +23,17 @@ export function ImageDisplay({ imageUrl }: ImageDisplayProps) {
       // 检查是否是本地URL
       const isLocalUrl = imageUrl.startsWith('/');
       
-      // 检查是否在Vercel环境中
-      const isVercelEnv = typeof window !== 'undefined' && 
-        window.location.hostname.includes('vercel.app');
+      // 检查是否在Vercel环境中（通过props或window.location）
+      const isVercelEnvironment = isVercelEnv || 
+        (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app'));
       
-      // 在Vercel环境中，如果是本地URL且不是API代理URL，可能需要使用代理
-      if (isVercelEnv && isLocalUrl && !imageUrl.startsWith('/api/')) {
-        console.log('在Vercel环境中检测到本地URL，这可能无法正常工作:', imageUrl);
+      // 在Vercel环境中，如果是本地URL，这将无法工作
+      if (isVercelEnvironment && isLocalUrl) {
+        console.error('在Vercel环境中检测到本地URL，这无法正常工作:', imageUrl);
+        // 设置一个占位图像
+        setImgSrc('/placeholder-image.svg');
+        setIsLoading(false);
+        return;
       }
       
       // 如果是飞书URL，使用代理
@@ -38,7 +43,7 @@ export function ImageDisplay({ imageUrl }: ImageDisplayProps) {
         setImgSrc(imageUrl);
       }
     }
-  }, [imageUrl]);
+  }, [imageUrl, isVercelEnv]);
 
   if (!imageUrl) {
     return (
@@ -61,31 +66,8 @@ export function ImageDisplay({ imageUrl }: ImageDisplayProps) {
               onLoad={() => setIsLoading(false)}
               onError={(e) => {
                 console.error('图片加载失败:', imgSrc);
-                
-                // 如果当前URL不是代理URL，且是本地URL，尝试使用飞书URL
-                if (!imgSrc.startsWith('/api/') && imageUrl && imageUrl.startsWith('/')) {
-                  // 尝试从元数据中获取飞书URL
-                  fetch(`/api/image-metadata?path=${encodeURIComponent(imageUrl)}`)
-                    .then(res => res.json())
-                    .then(data => {
-                      if (data.success && data.data?.feishuUrl) {
-                        console.log('尝试使用飞书URL:', data.data.feishuUrl);
-                        setImgSrc(`/api/image-proxy?url=${encodeURIComponent(data.data.feishuUrl)}`);
-                        return;
-                      }
-                      // 如果无法获取飞书URL，使用占位图
-                      e.currentTarget.src = '/placeholder-image.svg';
-                      setIsLoading(false);
-                    })
-                    .catch(err => {
-                      console.error('获取元数据失败:', err);
-                      e.currentTarget.src = '/placeholder-image.svg';
-                      setIsLoading(false);
-                    });
-                } else {
-                  e.currentTarget.src = '/placeholder-image.svg';
-                  setIsLoading(false);
-                }
+                e.currentTarget.src = '/placeholder-image.svg';
+                setIsLoading(false);
               }}
             />
           )}

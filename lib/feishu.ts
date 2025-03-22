@@ -343,6 +343,79 @@ export async function getImageRecords() {
 }
 
 /**
+ * 根据ID获取单个图片记录
+ * @param {string} imageId - 图片ID
+ * @returns {Promise<any>} 图片记录
+ */
+export async function getImageRecordById(imageId: string) {
+  try {
+    console.log(`getImageRecordById: 开始获取图片记录，ID: ${imageId}`);
+    const token = await getAccessToken();
+    
+    // 查询特定ID的记录
+    const response = await axios.get(
+      `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          filter: `CurrentValue.[id] = "${imageId}"`
+        }
+      }
+    );
+    
+    if (response.data.code === 0 && response.data.data.items.length > 0) {
+      const item = response.data.data.items[0];
+      const fields = item.fields || {};
+      
+      // 处理附件字段
+      let fileToken = '';
+      if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
+        fileToken = fields.attachment[0].file_token || '';
+      }
+      
+      // 处理timestamp字段
+      let timestamp = Date.now();
+      if (fields.timestamp) {
+        if (typeof fields.timestamp === 'string') {
+          try {
+            if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
+              timestamp = new Date(fields.timestamp).getTime();
+            } else if (!isNaN(Number(fields.timestamp))) {
+              timestamp = Number(fields.timestamp);
+            }
+          } catch (e) {
+            console.warn('解析timestamp字段失败:', e);
+          }
+        } else if (typeof fields.timestamp === 'number') {
+          timestamp = fields.timestamp;
+        }
+      }
+      
+      console.log(`getImageRecordById: 成功获取图片记录，ID: ${imageId}`);
+      
+      return {
+        id: fields.id || item.record_id || 'unknown',
+        url: fields.url || '',
+        fileToken: fileToken,
+        prompt: fields.prompt || '',
+        timestamp: timestamp,
+        parentId: fields.parentId || null,
+        rootParentId: fields.rootParentId || null,
+        type: fields.type || 'generated'
+      };
+    } else {
+      console.log(`getImageRecordById: 未找到图片记录，ID: ${imageId}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`getImageRecordById: 获取图片记录出错:`, error);
+    return null;
+  }
+}
+
+/**
  * 从飞书获取特定图片的编辑历史记录
  * @param {string} imageId - 图片ID
  * @returns {Promise<Array>} 编辑历史记录列表

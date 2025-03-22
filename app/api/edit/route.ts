@@ -4,6 +4,7 @@ import { ApiResponse } from "@/lib/types";
 import { saveImage, fetchImageFromUrl, getImageIdFromUrl, initDirectories } from "@/lib/server-utils";
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getImageRecordById } from "@/lib/feishu";
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -14,8 +15,14 @@ const MODEL_ID = "gemini-2.0-flash-exp";
 
 export async function POST(req: NextRequest) {
   try {
-    // 初始化目录，确保包括 edit-history 在内的所有目录都存在
-    await initDirectories();
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    console.log(`编辑图片API - 当前环境: ${isVercelEnvironment ? 'Vercel' : '本地开发'}`);
+    
+    // 仅在本地环境初始化目录
+    if (!isVercelEnvironment) {
+      await initDirectories();
+    }
     
     // Parse JSON request
     const requestData = await req.json();
@@ -42,59 +49,111 @@ export async function POST(req: NextRequest) {
     }
 
     // 从图片URL中提取当前图片ID
-    const currentImageId = await getImageIdFromUrl(imageUrl);
-    
-    // 检查当前图片的原始父ID
-    let parentId = currentImageId; // 默认使用当前图片ID作为parentId
+    let currentImageId: string | undefined;
+    let parentId: string | undefined;
     let isUploadedImage = false;
     
-    // 获取该图片对应的所有元数据
-    try {
-      const metadataDir = path.join(process.cwd(), "data", "metadata");
-      const metadataPath = path.join(metadataDir, `${currentImageId}.json`);
-      const content = await fs.readFile(metadataPath, "utf8");
-      const imageMetadata = JSON.parse(content);
-      
-      // 如果是上传图片，则使用当前图片ID作为根parentId
-      if (imageMetadata.type === "uploaded") {
-        parentId = currentImageId;
-        isUploadedImage = true;
-      } 
-      // 如果是生成图片且有rootParentId属性，则继续parentId
-      else if (imageMetadata.rootParentId) {
-        parentId = imageMetadata.rootParentId;
-      } 
-      // 如果有parentId则使用它
-      else if (imageMetadata.parentId) {
-        parentId = imageMetadata.parentId;
-      }
-    } catch (err) {
-      console.log("获取图片元数据失败，使用当前图片ID作为parentId:", err);
-    }
-    try {
-      // 尝试获取原始图片的元数据
-      const metadataDir = path.join(process.cwd(), "data", "metadata");
-      const files = await fs.readdir(metadataDir);
-      
-      for (const file of files) {
-        if (file.endsWith(".json")) {
-          const metadataPath = path.join(metadataDir, file);
-          const content = await fs.readFile(metadataPath, "utf8");
-          const metadata = JSON.parse(content);
+    if (isVercelEnvironment) {
+      // 在Vercel环境中，尝试从URL中提取图片ID
+      if (imageUrl.includes('open.feishu.cn')) {
+        // 从飞书URL中提取图片ID
+        try {
+          // 尝试从飞书获取图片记录
+          // 假设URL格式为 https://open.feishu.cn/...?id=xxx 或者包含在某个路径中
+          const urlObj = new URL(imageUrl);
+          const idFromQuery = urlObj.searchParams.get('id');
           
-          // 检查URL是否匹配，以及是否为上传的图片
-          if (metadata.url === imageUrl && metadata.type === "uploaded") {
-            isUploadedImage = true;
-            break;
+          if (idFromQuery) {
+            currentImageId = idFromQuery;
+            
+            // 从飞书获取图片记录
+            const imageRecord = await getImageRecordById(currentImageId);
+            if (imageRecord) {
+              parentId = imageRecord.parentId || currentImageId;
+              isUploadedImage = imageRecord.type === "uploaded";
+            }
+          } else {
+            // 如果URL中没有ID参数，尝试从路径中提取
+            const pathParts = urlObj.pathname.split('/');
+            const potentialId = pathParts[pathParts.length - 1];
+            if (potentialId && potentialId.length > 8) {
+              currentImageId = potentialId;
+              
+              // 从飞书获取图片记录
+              const imageRecord = await getImageRecordById(currentImageId);
+              if (imageRecord) {
+                parentId = imageRecord.parentId || currentImageId;
+                isUploadedImage = imageRecord.type === "uploaded";
+              }
+            }
           }
+        } catch (err) {
+          console.error("从飞书URL提取图片ID失败:", err);
+          // 继续处理，使用默认值
         }
       }
-    } catch (err) {
-      console.error("查询上传图片元数据时出错:", err);
-      // 继续处理，不中断流程
+      
+      // 如果无法从URL中提取ID，生成一个随机ID
+      if (!currentImageId) {
+        currentImageId = `img-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        parentId = currentImageId;
+      }
+    } else {
+      // 本地环境，使用原来的逻辑
+      currentImageId = await getImageIdFromUrl(imageUrl);
+      
+      // 检查当前图片的原始父ID
+      parentId = currentImageId; // 默认使用当前图片ID作为parentId
+      
+      // 获取该图片对应的所有元数据
+      try {
+        const metadataDir = path.join(process.cwd(), "data", "metadata");
+        const metadataPath = path.join(metadataDir, `${currentImageId}.json`);
+        const content = await fs.readFile(metadataPath, "utf8");
+        const imageMetadata = JSON.parse(content);
+        
+        // 如果是上传图片，则使用当前图片ID作为根parentId
+        if (imageMetadata.type === "uploaded") {
+          parentId = currentImageId;
+          isUploadedImage = true;
+        } 
+        // 如果是生成图片且有rootParentId属性，则继续parentId
+        else if (imageMetadata.rootParentId) {
+          parentId = imageMetadata.rootParentId;
+        } 
+        // 如果有parentId则使用它
+        else if (imageMetadata.parentId) {
+          parentId = imageMetadata.parentId;
+        }
+      } catch (err) {
+        console.log("获取图片元数据失败，使用当前图片ID作为parentId:", err);
+      }
+      
+      try {
+        // 尝试获取原始图片的元数据
+        const metadataDir = path.join(process.cwd(), "data", "metadata");
+        const files = await fs.readdir(metadataDir);
+        
+        for (const file of files) {
+          if (file.endsWith(".json")) {
+            const metadataPath = path.join(metadataDir, file);
+            const content = await fs.readFile(metadataPath, "utf8");
+            const metadata = JSON.parse(content);
+            
+            // 检查URL是否匹配，以及是否为上传的图片
+            if (metadata.url === imageUrl && metadata.type === "uploaded") {
+              isUploadedImage = true;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("查询上传图片元数据时出错:", err);
+        // 继续处理，不中断流程
+      }
     }
     
-    console.log("图片类型检查:", { imageUrl, isUploadedImage });
+    console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage, isVercelEnv: isVercelEnvironment });
 
     // Fetch image data from URL
     const { data: imageData, mimeType } = await fetchImageFromUrl(imageUrl);
@@ -198,7 +257,8 @@ export async function POST(req: NextRequest) {
       responseMimeType,
       { 
         isUploadedImage,
-        rootParentId: parentId  // 增加rootParentId继承，确保编辑链不断裂
+        rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
+        isVercelEnv: isVercelEnvironment  // 传递Vercel环境标志
       },  
       currentImageId  // 传递当前图片ID作为直接父ID
     );
@@ -218,7 +278,6 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             prompt,
             resultImageId: metadata.id
-            // editGroupId字段已移除
           })
         });
         
@@ -234,9 +293,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        imageUrl: metadata.url,
+        imageUrl: isVercelEnvironment ? metadata.feishuUrl : metadata.url,  // 在Vercel环境中返回飞书URL
         description: textResponse,
-        metadata
+        metadata,
+        isVercelEnv: isVercelEnvironment  // 返回Vercel环境标志
       }
     } as ApiResponse);
   } catch (error) {

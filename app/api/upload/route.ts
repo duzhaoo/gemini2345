@@ -7,6 +7,10 @@ import { uploadImageToFeishu, saveImageRecord } from '@/lib/feishu';
 
 export async function POST(request: NextRequest) {
   try {
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    console.log(`上传图片API - 当前环境: ${isVercelEnvironment ? 'Vercel' : '本地开发'}`);
+
     const formData = await request.formData();
     const image = formData.get('image') as File;
 
@@ -32,17 +36,12 @@ export async function POST(request: NextRequest) {
     }
     
     const filename = `${hash}.${extension}`;
-    const filepath = join(process.cwd(), 'public', 'generated-images', filename);
-    
-    // Write the file to disk
-    const imageBuffer = Buffer.from(buffer);
-    await writeFile(filepath, imageBuffer);
     
     // 为元数据创建唯一ID
     const id = uuidv4();
     const prompt = formData.get('prompt') as string || "用户上传的原始图片";
     
-    // Create metadata
+    // 创建基本元数据
     const metadata: any = {
       id,
       prompt,
@@ -50,20 +49,17 @@ export async function POST(request: NextRequest) {
       filename,
       mimeType,
       size: buffer.byteLength,
-      url: `/generated-images/${filename}`,
       type: "uploaded", // 标记为用户上传的图片
+      isVercelEnv: isVercelEnvironment
     };
     
-    // 将元数据保存到本地文件系统
-    const metadataDir = join(process.cwd(), 'data', 'metadata');
-    const metadataPath = join(metadataDir, `${id}.json`);
-    await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    // 转换为Base64用于上传到飞书
+    const imageBuffer = Buffer.from(buffer);
+    const imageBase64 = imageBuffer.toString('base64');
     
-    // 同步上传到飞书
+    // 上传图片到飞书
     try {
-      console.log('正在将上传的原始图片同步到飞书...');
-      // 转换为Base64
-      const imageBase64 = imageBuffer.toString('base64');
+      console.log('正在将上传的原始图片上传到飞书...');
       
       // 上传图片到飞书
       const fileInfo = await uploadImageToFeishu(
@@ -82,7 +78,6 @@ export async function POST(request: NextRequest) {
         prompt,
         timestamp: new Date().getTime(),
         parentId: undefined
-        // editGroupId字段已移除
       });
       
       console.log('记录已保存到飞书多维表格，ID:', recordInfo.record_id);
@@ -90,21 +85,44 @@ export async function POST(request: NextRequest) {
       // 更新元数据，添加飞书信息
       metadata.feishuUrl = fileInfo.url;
       metadata.feishuFileToken = fileInfo.fileToken;
-      await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      
+      // 设置图片URL
+      if (isVercelEnvironment) {
+        // 在Vercel环境中，使用飞书URL
+        metadata.url = fileInfo.url;
+        metadata.imageUrl = fileInfo.url;
+      } else {
+        // 在本地环境中，使用本地URL
+        metadata.url = `/generated-images/${filename}`;
+        metadata.imageUrl = `/generated-images/${filename}`;
+        
+        // 在本地环境中，保存图片到本地文件系统
+        const filepath = join(process.cwd(), 'public', 'generated-images', filename);
+        await writeFile(filepath, imageBuffer);
+        
+        // 在本地环境中，保存元数据到本地文件系统
+        const metadataDir = join(process.cwd(), 'data', 'metadata');
+        const metadataPath = join(metadataDir, `${id}.json`);
+        await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      }
+      
+      // 返回成功响应
+      return NextResponse.json({
+        success: true,
+        data: {
+          imageUrl: isVercelEnvironment ? fileInfo.url : `/generated-images/${filename}`,
+          description: null,
+          metadata,
+          isVercelEnv: isVercelEnvironment
+        },
+      });
     } catch (feishuError) {
       console.error('将图片上传到飞书时出错:', feishuError);
-      // 继续执行，不中断上传流程，即使飞书同步失败也返回成功上传到本地的结果
+      return NextResponse.json(
+        { success: false, error: { code: 'FEISHU_UPLOAD_ERROR', message: '上传图片到飞书失败' } },
+        { status: 500 }
+      );
     }
-    
-    // Return the image URL
-    return NextResponse.json({
-      success: true,
-      data: {
-        imageUrl: `/generated-images/${filename}`,
-        description: null,
-        metadata,
-      },
-    });
   } catch (error) {
     console.error('Error uploading image:', error);
     return NextResponse.json(

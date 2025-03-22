@@ -152,7 +152,8 @@ export async function POST(req: NextRequest) {
       data: {
         imageUrl: process.env.VERCEL === '1' && metadata.feishuUrl ? metadata.feishuUrl : metadata.url,
         description: textResponse,
-        metadata
+        metadata,
+        isVercelEnv: process.env.VERCEL === '1'
       }
     } as ApiResponse);
   } catch (error) {

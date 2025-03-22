@@ -27,6 +27,10 @@ export async function GET(req: NextRequest) {
     console.log('\n\n=============================================');
     console.log('开始处理获取图片及历史记录请求:', new Date().toISOString());
     
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    console.log(`当前环境: ${isVercelEnvironment ? 'Vercel' : '本地开发'}`);
+    
     // 不再需要初始化本地文件目录
     
     // 1. 获取所有图片记录
@@ -91,7 +95,12 @@ export async function GET(req: NextRequest) {
         createdAt,
         type: img.type || 'generated',
         parentId: img.parentId,
-        rootParentId: img.rootParentId
+        rootParentId: img.rootParentId,
+        // 在Vercel环境中，始终使用飞书URL
+        imageUrl: isVercelEnvironment ? img.feishuUrl : (img.imageUrl || img.feishuUrl),
+        feishuUrl: img.feishuUrl || "",
+        // 添加Vercel环境标志
+        isVercelEnv: isVercelEnvironment
       };
       
       // 预处理，收集所有可能的rootParentId
@@ -262,7 +271,7 @@ export async function GET(req: NextRequest) {
       
       // 输出编辑图片的具体信息
       group.edits.forEach((edit, i) => {
-        console.log(`    编辑 #${i+1}: ID=${edit.id}, parentId=${edit.parentId || '无'}, rootParentId=${edit.rootParentId || '无'}`);
+        console.log(`    编辑 #${i+1}: ID=${edit.id}, 父ID=${edit.parentId || '无'}, 根父ID=${edit.rootParentId || '无'}`);
       });
       
       if (allEditHistories[groupId]) {
@@ -421,6 +430,23 @@ export async function GET(req: NextRequest) {
         const dateA = new Date(a.original.createdAt).getTime();
         const dateB = new Date(b.original.createdAt).getTime();
         return dateB - dateA;
+      })
+      // 确保所有图片URL在Vercel环境中都是飞书URL
+      .map(group => {
+        if (isVercelEnvironment) {
+          if (group.original) {
+            group.original.imageUrl = group.original.feishuUrl;
+          }
+          
+          group.edits = group.edits.map(edit => {
+            return {
+              ...edit,
+              imageUrl: edit.feishuUrl
+            };
+          });
+        }
+        
+        return group;
       });
     
     // 处理没有正确分组的图片

@@ -55,4 +55,5 @@ export interface ImageOptions {
   quality?: number;
   isUploadedImage?: boolean; // 添加标记，用于标识是否为用户上传的图片
   rootParentId?: string;   // 添加根父ID，用于跟踪编辑链的出处
+  isVercelEnv?: boolean;   // 添加Vercel环境标志，用于区分处理逻辑
 }

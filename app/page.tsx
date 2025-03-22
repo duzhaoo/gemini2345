@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ImageGeneratorForm } from "@/components/image-generator-form";
@@ -11,6 +11,17 @@ import { ImagesWithHistory } from "@/components/images-with-history";
 export default function Home() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("generate");
+  const [isVercelEnv, setIsVercelEnv] = useState(false);
+
+  // 检测是否在Vercel环境中
+  useEffect(() => {
+    // 检查是否在客户端
+    if (typeof window !== 'undefined') {
+      // 检查是否在Vercel环境中
+      const isVercel = window.location.hostname.includes('vercel.app');
+      setIsVercelEnv(isVercel);
+    }
+  }, []);
 
   const handleImageGenerated = (imageUrl: string) => {
     setCurrentImageUrl(imageUrl);
@@ -53,7 +64,7 @@ export default function Home() {
           </Tabs>
         </div>
         <div>
-          <ImageDisplay imageUrl={currentImageUrl} />
+          <ImageDisplay imageUrl={currentImageUrl} isVercelEnv={isVercelEnv} />
         </div>
       </div>
 

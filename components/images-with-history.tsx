@@ -15,6 +15,7 @@ interface ImageItem {
   type?: string;
   rootParentId?: string;
   parentId?: string;
+  isVercelEnv?: boolean; // 添加isVercelEnv字段
 }
 
 interface EditHistory {
@@ -40,22 +41,7 @@ export function ImagesWithHistory() {
   const [error, setError] = useState<string | null>(null);
   const [isVercelEnv, setIsVercelEnv] = useState(false);
 
-  // 检测是否在Vercel环境中
-  useEffect(() => {
-    // 检查是否在客户端
-    if (typeof window !== 'undefined') {
-      // 检查是否在Vercel环境中
-      const isVercel = window.location.hostname.includes('vercel.app');
-      setIsVercelEnv(isVercel);
-    }
-  }, []);
-
-  // 数据统计状态已移除
-
-  useEffect(() => {
-    fetchImagesWithHistory();
-  }, []);
-  
+  // 获取图片历史记录
   const fetchImagesWithHistory = async () => {
     setIsLoading(true);
     
@@ -284,7 +270,11 @@ export function ImagesWithHistory() {
         
         setImageGroups(validatedGroups);
         
-
+        // 从第一个图片组中获取isVercelEnv标志
+        if (validatedGroups.length > 0 && validatedGroups[0].original && validatedGroups[0].original.isVercelEnv !== undefined) {
+          setIsVercelEnv(validatedGroups[0].original.isVercelEnv);
+          console.log('从API获取Vercel环境标志:', validatedGroups[0].original.isVercelEnv);
+        }
       } else {
         console.error("API响应格式不符合预期:", data);
         setError("API响应格式不符合预期");
@@ -297,16 +287,28 @@ export function ImagesWithHistory() {
     }
   };
 
+  useEffect(() => {
+    fetchImagesWithHistory();
+  }, []);
+  
   const getImageSrc = (url: string, isVercelEnv: boolean) => {
     // 检查是否是飞书URL
     const isFeishuUrl = url.includes('open.feishu.cn');
     
     // 检查是否是本地URL
-    const isLocalUrl = url.startsWith('/');
+    const isLocalUrl = url.startsWith('/') && !url.startsWith('/api/');
     
     // 在Vercel环境中，本地URL无法工作
     if (isVercelEnv && isLocalUrl) {
       console.error('在Vercel环境中检测到本地URL，这无法正常工作:', url);
+      // 尝试从URL中提取图片ID
+      const matches = url.match(/\/images\/([a-zA-Z0-9-]+)\.(png|jpg|jpeg|webp)/i);
+      if (matches && matches[1]) {
+        const imageId = matches[1];
+        console.log('从本地URL提取到图片ID:', imageId);
+        // 使用图片元数据API获取飞书URL
+        return `/api/image-metadata?id=${imageId}`;
+      }
       return '/placeholder-image.svg';
     }
     
