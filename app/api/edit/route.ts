@@ -372,15 +372,45 @@ export async function POST(req: NextRequest) {
         console.log(`尝试编辑图片, 尝试次数: ${retryCount + 1}/${maxRetries + 1}`);
         // 使用try-catch包裹API调用，确保错误被正确捕获
         try {
-          result = await model.generateContent(messageParts as any);
-          console.log(`编辑图片API调用成功`);
-          break; // 成功则跳出循环
-        } catch (apiError: any) {
-          console.error(`Gemini API调用错误:`, apiError);
-          throw apiError; // 将错误传递给外层catch
+          // 使用更完善的错误处理调用Gemini API
+          try {
+            result = await model.generateContent(messageParts as any);
+            console.log(`编辑图片API调用成功`);
+            // 验证响应结构
+            if (!result || !result.response) {
+              console.error(`Gemini API响应结构不完整:`, result);
+              throw new Error(`响应结构不完整`);
+            }
+            break; // 成功则跳出循环
+          } catch (apiError: any) {
+            console.error(`Gemini API调用错误:`, apiError);
+            // 检查是否能获取到响应文本
+            if (apiError.response && typeof apiError.response.text === 'function') {
+              try {
+                const errorText = await apiError.response.text();
+                console.error('Gemini API错误响应文本:', errorText);
+              } catch (textError) {
+                console.error('无法获取错误响应文本:', textError);
+              }
+            }
+            throw apiError; // 将错误传递给外层catch
+          }
+        } catch (wrapperError) {
+          console.error(`编辑图片包装器错误:`, wrapperError);
+          throw wrapperError; // 继续将错误向上传递
         }
       } catch (error: any) {
         retryCount++;
+        
+        // 记录错误详情，包括响应信息
+        console.error(`编辑图片错误详情:`, error);
+        
+        // 判断是否是非JSON响应错误
+        if (error.message && error.message.includes("not valid JSON") && retryCount <= maxRetries) {
+          console.log(`JSON解析错误，等待 ${retryDelay * retryCount}ms 后重试...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay * retryCount));
+          continue;
+        }
         
         // 判断是否是速率限制错误
         if (error.message && error.message.includes("Rate limit") && retryCount <= maxRetries) {
