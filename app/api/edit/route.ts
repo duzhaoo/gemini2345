@@ -13,6 +13,7 @@ const MODEL_ID = "gemini-2.0-flash-exp";
 
 export async function POST(req: NextRequest) {
   try {
+    console.log(`编辑图片API - 请求开始处理`);
     console.log(`编辑图片API - 当前环境: Vercel`);
     
     // Parse JSON request
@@ -368,8 +369,15 @@ export async function POST(req: NextRequest) {
       try {
         // Send the message to generate content with proper typing
         console.log(`尝试编辑图片, 尝试次数: ${retryCount + 1}/${maxRetries + 1}`);
-        result = await model.generateContent(messageParts as any);
-        break; // 成功则跳出循环
+        // 使用try-catch包裹API调用，确保错误被正确捕获
+        try {
+          result = await model.generateContent(messageParts as any);
+          console.log(`编辑图片API调用成功`);
+          break; // 成功则跳出循环
+        } catch (apiError: any) {
+          console.error(`Gemini API调用错误:`, apiError);
+          throw apiError; // 将错误传递给外层catch
+        }
       } catch (error: any) {
         retryCount++;
         
@@ -380,8 +388,20 @@ export async function POST(req: NextRequest) {
           continue;
         }
         
-        // 如果是其他错误或者已经超过最大重试次数，则抛出错误
-        throw error;
+        // 如果是其他错误或者已经超过最大重试次数
+        if (retryCount > maxRetries) {
+          console.error(`超过最大重试次数，放弃重试`);
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: "API_CALL_FAILED",
+              message: "调用图片编辑API失败",
+              details: error instanceof Error ? error.message : String(error)
+            }
+          } as ApiResponse, { status: 500 });
+        }
+        
+        console.error(`编辑图片错误, 将在第${retryCount+1}次重试:`, error);
       }
     }
     
@@ -403,20 +423,39 @@ export async function POST(req: NextRequest) {
     metadata = null;
 
     // Process the response
-    if (response && response.candidates && response.candidates.length > 0 && 
-        response.candidates[0].content && response.candidates[0].content.parts) {
-      const parts = response.candidates[0].content.parts;
-      
-      for (const part of parts) {
-        if (part && "inlineData" in part && part.inlineData) {
-          // Get the image data
-          generatedImageData = part.inlineData.data;
-          responseMimeType = part.inlineData.mimeType || "image/png";
-        } else if (part && "text" in part && part.text) {
-          // Store the text
-          textResponse = part.text;
+    try {
+      if (response && response.candidates && response.candidates.length > 0 && 
+          response.candidates[0].content && response.candidates[0].content.parts) {
+        const parts = response.candidates[0].content.parts;
+        console.log(`成功获取响应，包含 ${parts.length} 个部分`);
+        
+        for (const part of parts) {
+          if (part && "inlineData" in part && part.inlineData) {
+            // Get the image data
+            generatedImageData = part.inlineData.data;
+            responseMimeType = part.inlineData.mimeType || "image/png";
+            console.log(`获取到图片数据，类型: ${responseMimeType}`);
+          } else if (part && "text" in part && part.text) {
+            // Store the text
+            textResponse = part.text;
+            console.log(`获取到文本响应: ${textResponse?.substring(0, 50)}...`);
+          } else {
+            console.log(`未知的响应部分类型:`, part);
+          }
         }
+      } else {
+        console.error(`响应结构不完整:`, response);
       }
+    } catch (parseError) {
+      console.error(`解析响应时发生错误:`, parseError);
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "RESPONSE_PARSE_ERROR",
+          message: "解析API响应时发生错误",
+          details: parseError instanceof Error ? parseError.message : String(parseError)
+        }
+      } as ApiResponse, { status: 500 });
     }
 
     if (!generatedImageData) {
@@ -515,12 +554,14 @@ export async function POST(req: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
     
+    // 返回更详细的错误信息，帮助调试
     return NextResponse.json({
       success: false,
       error: {
         code: "EDIT_FAILED",
-        message: "Failed to edit image",
-        details: errorMessage
+        message: "图片编辑失败",
+        details: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
       }
     } as ApiResponse, { status: 500 });
   }
