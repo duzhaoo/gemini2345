@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
     }
     
     try {
-      // 从飞书URL提取图片ID
+      // 从飞书URL提取图片ID或fileToken
       currentImageId = await extractImageIdFromUrl(imageUrl);
       
       if (!currentImageId) {
@@ -312,11 +312,18 @@ export async function POST(req: NextRequest) {
       // 获取图片记录和数据
       const { imageData, mimeType, imageRecord } = await fetchImageFromFeishu(currentImageId);
       
-      // 设置父ID和类型
-      parentId = currentImageId;
+      // 设置父ID和类型 - 使用图片记录的实际ID，而不是fileToken
+      parentId = imageRecord.id; // 不再使用currentImageId，它只是fileToken
       isUploadedImage = imageRecord.type === "uploaded";
       
-      console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage });
+      console.log("图片详细信息:", { 
+        imageUrl,
+        fileToken: currentImageId,
+        实际ID: imageRecord.id,
+        父ID: parentId, 
+        类型: imageRecord.type,
+        isUploadedImage
+      });
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);
