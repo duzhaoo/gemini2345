@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/feishu";
 import axios from "axios";
-import fs from 'fs';
-import path from 'path';
-
-// 用于调试，存储错误图片请求的记录文件
-const LOG_DIR = path.join(process.cwd(), 'logs');
-const LOG_FILE = path.join(LOG_DIR, 'image-proxy-errors.log');
-
-// 确保日志目录存在
-if (!fs.existsSync(LOG_DIR)) {
-  try {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-  } catch (err) {
-    console.error('创建日志目录失败:', err);
-  }
-}
 
 /**
  * 记录图片请求错误
@@ -24,15 +9,8 @@ if (!fs.existsSync(LOG_DIR)) {
  */
 function logError(message: string, details: any = {}) {
   const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] ${message}\n${JSON.stringify(details, null, 2)}\n\n`;
-  
-  try {
-    fs.appendFileSync(LOG_FILE, logEntry);
-  } catch (err) {
-    console.error('写入错误日志失败:', err);
-  }
-  
-  console.error(message, details);
+  // 在Vercel环境中只使用控制台日志
+  console.error(`[${timestamp}] ${message}`, details);
 }
 
 /**
