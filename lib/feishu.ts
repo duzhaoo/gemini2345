@@ -55,130 +55,131 @@ export async function getAccessToken() {
 
 /**
  * 上传图片到飞书文件存储
- * @param {string} imageData - 图片的Base64数据
- * @param {string} fileName - 文件名
+ * @param {Buffer} buffer - 图片数据
+ * @param {string} filename - 文件名
  * @param {string} mimeType - MIME类型
  * @returns {Promise<{fileToken: string, url: string, name: string}>} 上传结果
  */
-export async function uploadImageToFeishu(imageData: string, fileName: string, mimeType: string) {
+export async function uploadImageToFeishu(buffer: Buffer, filename: string, mimeType: string) {
   try {
     console.log("======= 飞书图片上传开始 =======");
-    console.log(`uploadImageToFeishu: 开始上传图片到飞书，文件名: ${fileName}, MIME类型: ${mimeType}`);
-    console.log(`uploadImageToFeishu: 环境变量检查 - APP_ID存在: ${!!APP_ID}, APP_SECRET存在: ${!!APP_SECRET}, APP_TOKEN存在: ${!!APP_TOKEN}`);
+    console.log(`uploadImageToFeishu: 开始上传图片到飞书，文件名: ${filename}, MIME类型: ${mimeType}`);
     
-    // 检查图片尺寸，飞书API有大小限制
-    const imageBuffer = Buffer.from(imageData, 'base64');
-    const imageSizeInMB = imageBuffer.length / (1024 * 1024);
-    console.log(`uploadImageToFeishu: 图片大小: ${imageBuffer.length} 字节 (${imageSizeInMB.toFixed(2)}MB)`);
+    // 1. 环境变量检查
+    const appId = process.env.FEISHU_APP_ID;
+    const appSecret = process.env.FEISHU_APP_SECRET;
+    const appToken = process.env.APP_TOKEN;
     
-    // 飞书API限制为10MB，如果接近限制，给出警告
-    if (imageSizeInMB > 8) {
-      console.warn(`uploadImageToFeishu: 警告 - 图片大小(${imageSizeInMB.toFixed(2)}MB)接近飞书API限制(10MB)`);
+    console.log(`uploadImageToFeishu: 环境变量检查 - APP_ID存在: ${!!appId}, APP_SECRET存在: ${!!appSecret}, APP_TOKEN存在: ${!!appToken}`);
+    
+    if (!appId || !appSecret || !appToken) {
+      throw new Error('缺少必要的飞书API凭证环境变量');
     }
     
+    // 2. 图片大小检查
+    const sizeInBytes = buffer.byteLength;
+    const sizeInMB = sizeInBytes / (1024 * 1024);
+    console.log(`uploadImageToFeishu: 图片大小: ${sizeInBytes} 字节 (${sizeInMB.toFixed(2)}MB)`);
+    
+    // 飞书图片上传限制为10MB
+    if (sizeInMB > 10) {
+      console.error("uploadImageToFeishu: 图片大小超过飞书限制的10MB");
+      return {
+        fileToken: "",
+        url: "",
+        error: true,
+        errorMessage: `图片大小 ${sizeInMB.toFixed(2)}MB 超过飞书的10MB限制`
+      };
+    }
+    
+    // 3. 获取飞书访问令牌
     const token = await getAccessToken();
     console.log(`uploadImageToFeishu: 获取飞书access_token成功，令牌长度: ${token.length}`);
     
-    // 使用飞书文档中的图片上传API
-    const formData = new FormData();
-    formData.append('image_type', 'message');
-    formData.append('image', imageBuffer, {
-      filename: fileName,
+    // 4. 准备FormData
+    const form = new FormData();
+    form.append('image_type', 'message'); // 图片类型为消息图片
+    form.append('image', buffer, {
+      filename: filename,
       contentType: mimeType
     });
     
     console.log(`uploadImageToFeishu: 已准备FormData，准备调用API: ${BASE_URL}/im/v1/images`);
     
-    // 添加超时设置
-    console.log(`uploadImageToFeishu: 发送请求到飞书API，开始时间: ${new Date().toISOString()}`);
+    // 5. 发送请求
+    const startTime = new Date();
+    console.log(`uploadImageToFeishu: 发送请求到飞书API，开始时间: ${startTime.toISOString()}`);
+    console.log(`uploadImageToFeishu: 开始发送POST请求到 ${BASE_URL}/im/v1/images`);
     
-    // 使用更可靠的错误处理方式
-    try {
-      console.log(`uploadImageToFeishu: 开始发送POST请求到 ${BASE_URL}/im/v1/images`);
+    const response = await axios.post(`${BASE_URL}/im/v1/images`, form, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        ...form.getHeaders()  // 获取FormData生成的headers
+      },
+      timeout: 30000 // 30秒超时，上传大图片可能需要更长时间
+    });
+    
+    const endTime = new Date();
+    console.log(`uploadImageToFeishu: 请求已完成，HTTP状态码: ${response.status}`);
+    console.log(`uploadImageToFeishu: 请求成功返回，结束时间: ${endTime.toISOString()}`);
+    
+    // 6. 处理响应
+    if (response.data && response.data.code === 0 && response.data.data && response.data.data.image_key) {
+      const imageKey = response.data.data.image_key;
+      const imageUrl = `${BASE_URL}/im/v1/images/${imageKey}`;
       
-      // 使用较低的timeout，防止请求卡住
-      const response = await axios.post(
-        `${BASE_URL}/im/v1/images`,
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(),
-            'Authorization': `Bearer ${token}`
-          },
-          timeout: 30000, // 降低超时时间到30秒，避免请求卡住
-          maxContentLength: 15 * 1024 * 1024,  // 限制为15MB
-          maxBodyLength: 15 * 1024 * 1024,     // 限制为15MB
-          validateStatus: function (status) {
-            return status >= 200 && status < 300; // 只接受2xx状态码
-          }
-        }
-      );
+      console.log(`uploadImageToFeishu: 图片上传成功! image_key: ${imageKey}`);
+      console.log(`uploadImageToFeishu: 完整URL: ${imageUrl}`);
+      console.log("======= 飞书图片上传完成 =======");
       
-      console.log(`uploadImageToFeishu: 请求已完成，HTTP状态码: ${response.status}`);
-      console.log(`uploadImageToFeishu: 请求成功返回，结束时间: ${new Date().toISOString()}`);
+      return {
+        fileToken: imageKey,
+        url: imageUrl,
+        name: filename
+      };
+    } else {
+      // 处理API返回的错误
+      const errorCode = response.data?.code || -1;
+      const errorMsg = response.data?.msg || '未知错误';
       
-      // 处理响应
-      if (response.data && response.data.code === 0 && response.data.data && response.data.data.image_key) {
-        const imageKey = response.data.data.image_key;
-        const url = `${BASE_URL}/im/v1/images/${imageKey}`;
-        
-        console.log(`uploadImageToFeishu: 图片上传成功! image_key: ${imageKey}`);
-        console.log(`uploadImageToFeishu: 完整URL: ${url}`);
-        console.log("======= 飞书图片上传完成 =======");
-        
-        return {
-          fileToken: imageKey,
-          url: url,
-          name: fileName
-        };
-      } else {
-        // 处理飞书返回的错误
-        const errorMsg = response.data.msg || '未知错误';
-        const errorCode = response.data.code || -1;
-        console.error(`uploadImageToFeishu: 上传失败，飞书返回错误! 错误码: ${errorCode}, 消息: ${errorMsg}`);
-        
-        throw new Error(`飞书API返回错误: ${errorMsg} (${errorCode})`);
-      }
-    } catch (error) {
-      // 详细记录错误
-      console.error(`uploadImageToFeishu: 上传出错: ${error.message}`);
-      
-      if (error.response) {
-        // 服务器响应了，但状态码不是2xx
-        console.error(`uploadImageToFeishu: 服务器返回错误状态码: ${error.response.status}`);
-        console.error(`uploadImageToFeishu: 响应数据:`, error.response.data);
-      } else if (error.request) {
-        // 请求已发出但没有收到响应
-        console.error(`uploadImageToFeishu: 请求已发送但无响应，可能是超时或网络问题`);
-      } else {
-        // 设置请求时发生了错误
-        console.error(`uploadImageToFeishu: 请求配置错误: ${error.message}`);
-      }
-      
-      console.error(`uploadImageToFeishu: 完整错误信息:`, error);
+      console.error(`uploadImageToFeishu: 飞书API错误，代码: ${errorCode}, 消息: ${errorMsg}`);
       console.error("======= 飞书图片上传失败 =======");
       
-      // 返回带有错误信息的对象
       return {
-        fileToken: `error-${Date.now()}`,
-        url: `error://${fileName}`,
-        name: fileName,
+        fileToken: "",
+        url: "",
         error: true,
-        errorMessage: error.message || '未知错误'
+        errorMessage: `飞书API错误: ${errorCode} - ${errorMsg}`
       };
     }
   } catch (error) {
-    // 捕获所有其他错误
-    console.error(`uploadImageToFeishu: 意外错误: ${error.message}`);
+    // 处理请求异常
+    console.error(`uploadImageToFeishu: 上传图片异常: ${error.message}`);
     console.error(`uploadImageToFeishu: 错误堆栈: ${error.stack}`);
     console.error("======= 飞书图片上传异常中断 =======");
     
+    let errorMessage = '未知错误';
+    
+    if (error.response) {
+      // 服务器返回了错误状态码
+      console.error(`uploadImageToFeishu: 服务器返回错误状态码: ${error.response.status}`);
+      console.error(`uploadImageToFeishu: 响应数据:`, error.response.data);
+      errorMessage = `服务器错误: ${error.response.status} - ${error.response.statusText || '未知错误'}`;
+    } else if (error.request) {
+      // 请求已发送但没有收到响应
+      console.error(`uploadImageToFeishu: 请求已发送但无响应，可能是超时或网络问题`);
+      errorMessage = '网络错误: 请求超时或无响应';
+    } else {
+      // 设置请求时发生了错误
+      console.error(`uploadImageToFeishu: 请求配置错误: ${error.message}`);
+      errorMessage = `请求配置错误: ${error.message}`;
+    }
+    
     return {
-      fileToken: `error-${Date.now()}`,
-      url: `error://${fileName}`,
-      name: fileName,
+      fileToken: "",
+      url: "",
       error: true,
-      errorMessage: `意外错误: ${error.message}`
+      errorMessage
     };
   }
 }
@@ -206,17 +207,18 @@ export async function saveImageRecord(metadata: {
     const token = await getAccessToken();
     console.log(`saveImageRecord: 获取飞书访问令牌成功`);
     
+    // 确保所有字段都是字符串类型，避免飞书API的类型转换错误
     // 构建请求数据
     const requestData = {
       fields: {
-        id: metadata.id,
-        url: metadata.url,
-        fileToken: metadata.fileToken,
-        prompt: metadata.prompt,
-        timestamp: metadata.timestamp,
-        parentId: metadata.parentId || metadata.id, // 确保parentId不为空
-        rootParentId: metadata.rootParentId || metadata.parentId || metadata.id, // 确保rootParentId不为空
-        type: metadata.type || "generated" // 默认为生成的图片
+        id: String(metadata.id),
+        url: String(metadata.url),
+        fileToken: String(metadata.fileToken),
+        prompt: String(metadata.prompt || ''),
+        timestamp: String(metadata.timestamp || Date.now()), // 确保timestamp是字符串类型
+        parentId: String(metadata.parentId || metadata.id), // 确保parentId不为空
+        rootParentId: String(metadata.rootParentId || metadata.parentId || metadata.id), // 确保rootParentId不为空
+        type: String(metadata.type || "generated") // 默认为生成的图片
       }
     };
     
@@ -255,6 +257,7 @@ export async function saveImageRecord(metadata: {
         const errorCode = response.data.code || -1;
         const errorMsg = response.data.msg || '未知API错误';
         console.error(`saveImageRecord: 飞书API错误，代码: ${errorCode}, 消息: ${errorMsg}`);
+        console.error(`saveImageRecord: 详细响应:`, JSON.stringify(response.data));
         
         return {
           record_id: 'error',
@@ -455,31 +458,19 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
           // 如果有匹配，处理记录
           if (fileToken && (fileToken === imageId || fileToken.includes(imageId) || imageId.includes(fileToken))) {
             
-            // 处理timestamp字段
-            let timestamp = Date.now();
+            // 处理timestamp字段，确保是字符串格式
+            let timestamp = String(Date.now());
             if (fields.timestamp) {
-              if (typeof fields.timestamp === 'string') {
-                try {
-                  if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
-                    timestamp = new Date(fields.timestamp).getTime();
-                  } else if (!isNaN(Number(fields.timestamp))) {
-                    timestamp = Number(fields.timestamp);
-                  }
-                } catch (e) {
-                  console.warn('解析timestamp字段失败:', e);
-                }
-              } else if (typeof fields.timestamp === 'number') {
-                timestamp = fields.timestamp;
-              }
+              timestamp = String(fields.timestamp); // 确保转换为字符串
             }
             
-            // 返回找到的记录 - 确保字段值都是字符串
+            // 返回找到的记录 - 确保所有字段都是字符串类型
             const record = {
               id: String(fields.id || item.record_id || 'unknown'),
               url: String(fields.url || ''),
               fileToken: String(fileToken),
               prompt: String(fields.prompt || ''),
-              timestamp: String(timestamp),
+              timestamp: timestamp,
               parentId: String(fields.parentId || ''),
               rootParentId: String(fields.rootParentId || ''),
               type: String(fields.type || 'generated')
@@ -494,17 +485,19 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
         }
       }
       
-      // 如果没有找到匹配的记录，直接使用输入的ID作为fileToken
-      console.log(`getImageRecordById: 没有找到匹配的记录，直接使用输入的ID作为fileToken: ${imageId}`);
+      // 如果没有找到匹配的记录，返回错误信息而不是创建空记录
+      console.log(`getImageRecordById: 没有找到匹配的记录，ID: ${imageId}`);
       return {
         id: String(imageId),
         url: '',
         fileToken: String(imageId),
         prompt: '',
-        timestamp: String(Date.now()),  // 转换为字符串类型
-        parentId: '',  // 空字符串而非null
-        rootParentId: '',  // 空字符串而非null
-        type: 'uploaded'
+        timestamp: String(Date.now()),
+        parentId: '',
+        rootParentId: '',
+        type: 'unknown',
+        error: true,
+        errorMessage: `未找到图片记录: ${imageId}`
       };
     }
     
@@ -545,32 +538,21 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
         
         // 如果找到了有效的fileToken，直接返回记录
         if (fileToken) {
-          // 处理timestamp字段
-          let timestamp = Date.now();
+          // 处理timestamp字段，确保是字符串格式
+          let timestamp = String(Date.now());
           if (fields.timestamp) {
-            if (typeof fields.timestamp === 'string') {
-              try {
-                if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
-                  timestamp = new Date(fields.timestamp).getTime();
-                } else if (!isNaN(Number(fields.timestamp))) {
-                  timestamp = Number(fields.timestamp);
-                }
-              } catch (e) {
-                console.warn('解析timestamp字段失败:', e);
-              }
-            } else if (typeof fields.timestamp === 'number') {
-              timestamp = fields.timestamp;
-            }
+            timestamp = String(fields.timestamp); // 确保转换为字符串
           }
           
           console.log(`getImageRecordById: 成功获取图片记录，ID: ${imageId}`);
           
+          // 确保所有字段都是字符串类型
           return {
             id: String(fields.id || item.record_id || 'unknown'),
             url: String(fields.url || ''),
             fileToken: String(fileToken),
             prompt: String(fields.prompt || ''),
-            timestamp: String(timestamp),
+            timestamp: timestamp,
             parentId: String(fields.parentId || ''),
             rootParentId: String(fields.rootParentId || ''),
             type: String(fields.type || 'generated')
@@ -593,30 +575,19 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
           if (fileToken && (fileToken === imageId || fileToken.includes(imageId) || imageId.includes(fileToken))) {
             console.log(`getImageRecordById: 通过fileToken匹配到记录: ${fileToken}`);
             
-            // 处理timestamp字段
-            let timestamp = Date.now();
+            // 处理timestamp字段，确保是字符串格式
+            let timestamp = String(Date.now());
             if (fields.timestamp) {
-              if (typeof fields.timestamp === 'string') {
-                try {
-                  if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
-                    timestamp = new Date(fields.timestamp).getTime();
-                  } else if (!isNaN(Number(fields.timestamp))) {
-                    timestamp = Number(fields.timestamp);
-                  }
-                } catch (e) {
-                  console.warn('解析timestamp字段失败:', e);
-                }
-              } else if (typeof fields.timestamp === 'number') {
-                timestamp = fields.timestamp;
-              }
+              timestamp = String(fields.timestamp); // 确保转换为字符串
             }
             
+            // 确保所有字段都是字符串类型
             return {
               id: String(fields.id || item.record_id || 'unknown'),
               url: String(fields.url || ''),
               fileToken: String(fileToken),
               prompt: String(fields.prompt || ''),
-              timestamp: String(timestamp),
+              timestamp: timestamp,
               parentId: String(fields.parentId || ''),
               rootParentId: String(fields.rootParentId || ''),
               type: String(fields.type || 'generated')
@@ -624,20 +595,40 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
           }
         }
       }
-      
-
-    } else {
-      // 增加更详细的日志，帮助调试
-      console.log(`getImageRecordById: 未找到图片记录或响应格式不正确，ID: ${imageId}`);
-      console.log('响应数据:', JSON.stringify(response.data || {}));
-      
-
-      
-      return null;
     }
+    
+    // 增加更详细的日志，帮助调试
+    console.log(`getImageRecordById: 未找到图片记录或响应格式不正确，ID: ${imageId}`);
+    console.log('响应数据:', JSON.stringify(response.data || {}));
+    
+    // 返回错误信息而不是null，确保返回结构一致
+    return {
+      id: String(imageId),
+      url: '',
+      fileToken: String(imageId),
+      prompt: '',
+      timestamp: String(Date.now()),
+      parentId: '',
+      rootParentId: '',
+      type: 'unknown',
+      error: true,
+      errorMessage: `未找到图片记录: ${imageId}`
+    };
   } catch (error) {
     console.error(`getImageRecordById: 获取图片记录出错:`, error);
-    return null;
+    // 返回错误信息而不是null，确保返回结构一致
+    return {
+      id: String(imageId),
+      url: '',
+      fileToken: String(imageId),
+      prompt: '',
+      timestamp: String(Date.now()),
+      parentId: '',
+      rootParentId: '',
+      type: 'unknown',
+      error: true,
+      errorMessage: `获取图片记录出错: ${error.message}`
+    };
   }
 }
 
