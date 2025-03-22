@@ -1,0 +1,47 @@
+# 依赖目录
+node_modules/
+.pnp
+.pnp.js
+
+# 构建输出
+.next/
+out/
+build/
+dist/
+
+# 环境变量文件
+.env*.local
+.env
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 缓存
+.npm
+.eslintcache
+.vercel
+.turbo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 调试文件
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+
+# 生成的图片和用户上传内容
+public/generated-images/
+data/uploads/
+
+# 类型检查
+*.tsbuildinfo
+next-env.d.ts

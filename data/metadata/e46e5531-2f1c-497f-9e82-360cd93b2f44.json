@@ -1,0 +1,12 @@
+{
+  "id": "e46e5531-2f1c-497f-9e82-360cd93b2f44",
+  "prompt": "用户上传的原始图片",
+  "createdAt": "2025-03-21T06:05:35.740Z",
+  "filename": "856fc44d4114156066e269ee97e19d99.jpg",
+  "mimeType": "image/jpeg",
+  "size": 1632962,
+  "url": "/generated-images/856fc44d4114156066e269ee97e19d99.jpg",
+  "type": "uploaded",
+  "feishuUrl": "https://open.feishu.cn/open-apis/im/v1/images/img_v3_02kj_e5e360b2-07e5-4eb3-b11d-f1b19908d8cg",
+  "feishuFileToken": "img_v3_02kj_e5e360b2-07e5-4eb3-b11d-f1b19908d8cg"
+}

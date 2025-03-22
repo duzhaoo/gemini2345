@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="40px" height="40px" viewBox="0 0 80 80" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>User Avatar</title>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <circle fill="#E2E8F0" cx="40" cy="40" r="40"></circle>
+        <path d="M40,44 C47.732,44 54,37.732 54,30 C54,22.268 47.732,16 40,16 C32.268,16 26,22.268 26,30 C26,37.732 32.268,44 40,44 Z M19,64 L61,64 C61,53.507 51.493,45 40,45 C28.507,45 19,53.507 19,64 Z" fill="#94A3B8" fill-rule="nonzero"></path>
+    </g>
+</svg>

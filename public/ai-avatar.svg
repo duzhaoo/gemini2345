@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="40px" height="40px" viewBox="0 0 80 80" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>AI Avatar</title>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <circle fill="#EDE9FE" cx="40" cy="40" r="40"></circle>
+        <path d="M40,15 C27.85,15 18,24.85 18,37 C18,49.15 27.85,59 40,59 C52.15,59 62,49.15 62,37 C62,24.85 52.15,15 40,15 Z M30,33 C31.65,33 33,34.35 33,36 C33,37.65 31.65,39 30,39 C28.35,39 27,37.65 27,36 C27,34.35 28.35,33 30,33 Z M50,33 C51.65,33 53,34.35 53,36 C53,37.65 51.65,39 50,39 C48.35,39 47,37.65 47,36 C47,34.35 48.35,33 50,33 Z M40,51 C35,51 30.5,48.5 28,44.5 L31.5,42.5 C33.5,45.5 36.5,47 40,47 C43.5,47 46.5,45.5 48.5,42.5 L52,44.5 C49.5,48.5 45,51 40,51 Z" fill="#8B5CF6" fill-rule="nonzero"></path>
+    </g>
+</svg>
