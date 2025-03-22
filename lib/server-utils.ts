@@ -11,6 +11,15 @@ const metadataDir = path.join(process.cwd(), "data", "metadata");
 // Initialize directories
 export async function initDirectories() {
   try {
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    
+    // 在Vercel环境中不创建目录
+    if (isVercelEnvironment) {
+      console.log('在Vercel环境中运行，跳过目录初始化');
+      return;
+    }
+    
     await fs.mkdir(imagesDir, { recursive: true });
     await fs.mkdir(metadataDir, { recursive: true });
     
@@ -20,6 +29,7 @@ export async function initDirectories() {
     console.log('目录初始化成功:', { imagesDir, metadataDir, editHistoryDir });
   } catch (error) {
     console.error('Error initializing directories:', error);
+    throw error; // 重新抛出错误，让调用者知道初始化失败
   }
 }
 
