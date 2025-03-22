@@ -40,18 +40,17 @@ export async function saveImage(
   const filename = `${hash}.${extension}`;
   const filePath = path.join(imagesDir, filename);
   
-  // Save the image to disk
-  const buffer = Buffer.from(imageData, 'base64');
-  await fs.writeFile(filePath, buffer);
+  // 检测是否在Vercel环境中
+  const isVercelEnvironment = process.env.VERCEL === '1';
   
-  // Create image metadata
+  // 创建图片元数据
   const metadata: ImageMetadata = {
     id,
     prompt,
     createdAt: new Date().toISOString(),
     filename,
     mimeType,
-    size: buffer.length,
+    size: Buffer.from(imageData, 'base64').length,
     url: `/generated-images/${filename}`,
     type: options.isUploadedImage ? "uploaded" : "generated" // 添加类型字段，标识是上传的图片还是生成的图片
   };
@@ -70,12 +69,21 @@ export async function saveImage(
     metadata.rootParentId = parentId;
   }
   
-  // Save metadata to disk
-  const metadataPath = path.join(metadataDir, `${id}.json`);
-  await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-  
-  // 自动保存到飞书
   try {
+    // 只在非Vercel环境中保存到本地文件系统
+    if (!isVercelEnvironment) {
+      // Save the image to disk
+      const buffer = Buffer.from(imageData, 'base64');
+      await fs.writeFile(filePath, buffer);
+      
+      // Save metadata to disk
+      const metadataPath = path.join(metadataDir, `${id}.json`);
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    } else {
+      console.log('在Vercel环境中运行，跳过本地文件存储');
+    }
+    
+    // 自动保存到飞书
     console.log(`saveImage: 正在将图片自动上传到飞书...`);
     
     // 上传图片到飞书
@@ -86,8 +94,6 @@ export async function saveImage(
     );
     
     console.log(`saveImage: 图片已上传到飞书，URL: ${fileInfo.url}`);
-    
-    // editGroupId已经被移除，现在只使用parentId
     
     // 保存记录到飞书多维表格
     const recordInfo = await saveImageRecord({
@@ -110,13 +116,22 @@ export async function saveImage(
       feishuFileToken: fileInfo.fileToken
     };
     
-    // 更新本地元数据文件
-    await fs.writeFile(metadataPath, JSON.stringify(updatedMetadata, null, 2));
+    // 只在非Vercel环境中更新本地元数据文件
+    if (!isVercelEnvironment) {
+      const metadataPath = path.join(metadataDir, `${id}.json`);
+      await fs.writeFile(metadataPath, JSON.stringify(updatedMetadata, null, 2));
+    }
     
     return updatedMetadata;
-  } catch (feishuError) {
-    console.error(`saveImage: 保存到飞书失败:`, feishuError);
-    // 如果飞书上传失败，仍然返回本地元数据
+  } catch (error) {
+    console.error(`saveImage: 保存图片出错:`, error);
+    
+    // 如果在Vercel环境中且飞书上传失败，则无法提供图片
+    if (isVercelEnvironment) {
+      throw new Error(`无法保存图片: ${error.message}`);
+    }
+    
+    // 在非Vercel环境中，如果飞书上传失败，仍然返回本地元数据
     return metadata;
   }
 }
@@ -124,8 +139,21 @@ export async function saveImage(
 // Function to fetch image data from URL
 export async function fetchImageFromUrl(url: string): Promise<{ data: string; mimeType: string }> {
   try {
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    
     // Handle local URLs (from our own server)
     if (url.startsWith('/')) {
+      // 在Vercel环境中，本地URL可能指向飞书存储的图片
+      if (isVercelEnvironment) {
+        console.log('在Vercel环境中，本地URL可能无效，尝试从飞书获取图片');
+        
+        // 如果是本地生成的图片URL，我们可能需要从飞书获取
+        // 这里需要实现一个从飞书获取图片的逻辑
+        // 但由于我们没有实现这个逻辑，所以直接抛出错误
+        throw new Error(`在Vercel环境中无法访问本地文件: ${url}`);
+      }
+      
       const publicDir = path.join(process.cwd(), 'public');
       const filePath = path.join(publicDir, url.replace(/^\//, ''));
       
@@ -180,8 +208,17 @@ export async function fetchImageFromUrl(url: string): Promise<{ data: string; mi
 // 从图片URL中提取图片ID
 export async function getImageIdFromUrl(url: string): Promise<string | undefined> {
   try {
+    // 检测是否在Vercel环境中
+    const isVercelEnvironment = process.env.VERCEL === '1';
+    
     // 如果是本地URL（例如 /generated-images/filename.png）
     if (url.startsWith('/generated-images/')) {
+      // 在Vercel环境中，我们无法从本地文件系统获取图片ID
+      if (isVercelEnvironment) {
+        console.log('在Vercel环境中，无法从本地文件系统获取图片ID');
+        return undefined;
+      }
+      
       const filename = path.basename(url);
       
       // 读取metadata目录下的所有文件
