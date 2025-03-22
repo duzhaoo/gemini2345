@@ -78,6 +78,11 @@ export async function saveImage(
   else if (options.isUploadedImage && parentId) {
     metadata.rootParentId = parentId;
   }
+  // 对于首次生成的图片，将自己的ID设置为rootParentId，这样它们可以成为自己的根节点
+  else {
+    metadata.rootParentId = id; // 使用自身ID作为rootParentId
+    console.log(`saveImage: 首次生成图片，设置rootParentId为自身ID: ${id}`);
+  }
   
   try {
     // 只在非Vercel环境中保存到本地文件系统
