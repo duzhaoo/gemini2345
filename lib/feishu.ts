@@ -354,8 +354,11 @@ export async function getImageRecordById(imageId: string) {
     console.log(`getImageRecordById: 开始获取图片记录，ID: ${imageId}`);
     const token = await getAccessToken();
     
-    // 查询特定ID的记录
-    const response = await axios.get(
+    // 查询特定ID的记录，尝试多种匹配方式
+    console.log(`getImageRecordById: 尝试通过ID查询图片记录: ${imageId}`);
+    
+    // 先尝试直接匹配ID
+    let response = await axios.get(
       `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
       {
         headers: {
@@ -367,57 +370,154 @@ export async function getImageRecordById(imageId: string) {
       }
     );
     
+    // 如果没有找到记录，尝试通过fileToken查询
+    if (!response.data || 
+        response.data.code !== 0 || 
+        !response.data.data || 
+        !response.data.data.items || 
+        !Array.isArray(response.data.data.items) || 
+        response.data.data.items.length === 0) {
+      
+      console.log(`getImageRecordById: 通过ID未找到记录，尝试通过fileToken查询`);
+      
+      // 获取所有记录，然后手动过滤
+      response = await axios.get(
+        `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          params: {
+            page_size: 100  // 获取最多100条记录
+          }
+        }
+      );
+    }
+    
     // 增加更多的安全检查
     if (response.data && 
         response.data.code === 0 && 
         response.data.data && 
         response.data.data.items && 
-        Array.isArray(response.data.data.items) && 
-        response.data.data.items.length > 0) {
+        Array.isArray(response.data.data.items)) {
       
-      const item = response.data.data.items[0];
-      const fields = item.fields || {};
-      
-      // 处理附件字段
-      let fileToken = '';
-      if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
-        fileToken = fields.attachment[0].file_token || '';
-      }
-      
-      // 处理timestamp字段
-      let timestamp = Date.now();
-      if (fields.timestamp) {
-        if (typeof fields.timestamp === 'string') {
-          try {
-            if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
-              timestamp = new Date(fields.timestamp).getTime();
-            } else if (!isNaN(Number(fields.timestamp))) {
-              timestamp = Number(fields.timestamp);
+      // 如果是直接匹配ID的查询，取第一条记录
+      if (response.data.data.items.length > 0) {
+        const item = response.data.data.items[0];
+        const fields = item.fields || {};
+        
+        // 处理附件字段
+        let fileToken = '';
+        if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
+          fileToken = fields.attachment[0].file_token || '';
+        }
+        
+        // 如果找到了有效的fileToken，直接返回记录
+        if (fileToken) {
+          // 处理timestamp字段
+          let timestamp = Date.now();
+          if (fields.timestamp) {
+            if (typeof fields.timestamp === 'string') {
+              try {
+                if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
+                  timestamp = new Date(fields.timestamp).getTime();
+                } else if (!isNaN(Number(fields.timestamp))) {
+                  timestamp = Number(fields.timestamp);
+                }
+              } catch (e) {
+                console.warn('解析timestamp字段失败:', e);
+              }
+            } else if (typeof fields.timestamp === 'number') {
+              timestamp = fields.timestamp;
             }
-          } catch (e) {
-            console.warn('解析timestamp字段失败:', e);
           }
-        } else if (typeof fields.timestamp === 'number') {
-          timestamp = fields.timestamp;
+          
+          console.log(`getImageRecordById: 成功获取图片记录，ID: ${imageId}`);
+          
+          return {
+            id: fields.id || item.record_id || 'unknown',
+            url: fields.url || '',
+            fileToken: fileToken,
+            prompt: fields.prompt || '',
+            timestamp: timestamp,
+            parentId: fields.parentId || null,
+            rootParentId: fields.rootParentId || null,
+            type: fields.type || 'generated'
+          };
         }
       }
       
-      console.log(`getImageRecordById: 成功获取图片记录，ID: ${imageId}`);
+      // 如果是获取所有记录的查询，尝试匹配fileToken
+      if (response.data.data.items.length > 0) {
+        console.log(`getImageRecordById: 尝试在 ${response.data.data.items.length} 条记录中匹配fileToken`);
+        
+        // 尝试匹配fileToken
+        for (const item of response.data.data.items) {
+          const fields = item.fields || {};
+          
+          // 处理附件字段
+          let fileToken = '';
+          if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
+            fileToken = fields.attachment[0].file_token || '';
+          }
+          
+          // 检查fileToken是否匹配或包含输入的ID
+          if (fileToken && (fileToken === imageId || fileToken.includes(imageId) || imageId.includes(fileToken))) {
+            console.log(`getImageRecordById: 通过fileToken匹配到记录: ${fileToken}`);
+            
+            // 处理timestamp字段
+            let timestamp = Date.now();
+            if (fields.timestamp) {
+              if (typeof fields.timestamp === 'string') {
+                try {
+                  if (fields.timestamp.includes('-') || fields.timestamp.includes('T')) {
+                    timestamp = new Date(fields.timestamp).getTime();
+                  } else if (!isNaN(Number(fields.timestamp))) {
+                    timestamp = Number(fields.timestamp);
+                  }
+                } catch (e) {
+                  console.warn('解析timestamp字段失败:', e);
+                }
+              } else if (typeof fields.timestamp === 'number') {
+                timestamp = fields.timestamp;
+              }
+            }
+            
+            return {
+              id: fields.id || item.record_id || 'unknown',
+              url: fields.url || '',
+              fileToken: fileToken,
+              prompt: fields.prompt || '',
+              timestamp: timestamp,
+              parentId: fields.parentId || null,
+              rootParentId: fields.rootParentId || null,
+              type: fields.type || 'generated'
+            };
+          }
+        }
+      }
       
-      return {
-        id: fields.id || item.record_id || 'unknown',
-        url: fields.url || '',
-        fileToken: fileToken,
-        prompt: fields.prompt || '',
-        timestamp: timestamp,
-        parentId: fields.parentId || null,
-        rootParentId: fields.rootParentId || null,
-        type: fields.type || 'generated'
-      };
+
     } else {
       // 增加更详细的日志，帮助调试
       console.log(`getImageRecordById: 未找到图片记录或响应格式不正确，ID: ${imageId}`);
       console.log('响应数据:', JSON.stringify(response.data || {}));
+      
+      // 尝试直接使用输入的ID作为fileToken
+      if (imageId.startsWith('img_v3_')) {
+        console.log(`getImageRecordById: 尝试直接使用输入的ID作为fileToken: ${imageId}`);
+        return {
+          id: imageId,
+          url: '',
+          fileToken: imageId,
+          prompt: '',
+          timestamp: Date.now(),
+          parentId: null,
+          rootParentId: null,
+          type: 'uploaded'
+        };
+      }
+      
       return null;
     }
   } catch (error) {
