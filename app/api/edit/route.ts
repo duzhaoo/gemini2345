@@ -346,6 +346,17 @@ export async function POST(req: NextRequest) {
       
       // 保存生成的图片
       try {
+        console.log("开始调用saveImage保存编辑后的图片, 参数:", {
+          promptLength: prompt.length,
+          mimeType: responseMimeType,
+          options: { 
+            isUploadedImage,
+            rootParentId: parentId,
+            isVercelEnv: true
+          },
+          parentId: currentImageId
+        });
+        
         metadata = await saveImage(
           generatedImageData,
           prompt,
@@ -357,6 +368,8 @@ export async function POST(req: NextRequest) {
           },  
           currentImageId  // 传递当前图片ID作为直接父ID
         );
+        
+        console.log("保存图片返回的metadata:", JSON.stringify(metadata, null, 2));
       } catch (saveError) {
         console.error(`保存图片时发生错误:`, saveError);
         return NextResponse.json({
@@ -380,15 +393,29 @@ export async function POST(req: NextRequest) {
         }
       }
       
+      // 验证返回数据完整性
+      const responseData = {
+        id: metadata?.id || "",
+        url: metadata?.url || "",
+        prompt: prompt,
+        textResponse: textResponse || ""
+      };
+      
+      console.log("返回给前端的数据:", JSON.stringify(responseData, null, 2));
+      
+      // 检查关键字段
+      if (!responseData.url) {
+        console.warn("警告: 返回给前端的URL为空!");
+      }
+      
+      if (!responseData.id) {
+        console.warn("警告: 返回给前端的ID为空!");
+      }
+      
       // 返回成功响应
       return NextResponse.json({
         success: true,
-        data: {
-          id: metadata?.id || "",
-          url: metadata?.url || "",
-          prompt: prompt,
-          textResponse: textResponse || ""
-        }
+        data: responseData
       } as ApiResponse);
       
     } catch (error: any) {
