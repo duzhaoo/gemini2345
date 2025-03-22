@@ -415,11 +415,8 @@ export async function getImageRecords() {
         // 打印飞书返回的字段信息，用于调试
         console.log('飞书记录字段:', JSON.stringify(fields));
         
-        // 处理附件字段
-        let fileToken = '';
-        if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
-          fileToken = fields.attachment[0].file_token || '';
-        }
+        // 直接从fileToken字段获取值
+        const fileToken = fields.fileToken || '';
         
         // 处理timestamp字段（现在为文本格式）
         let timestamp = Date.now();
@@ -505,15 +502,21 @@ export async function getImageRecordById(imageId: string) {
         for (const item of response.data.data.items) {
           const fields = item.fields || {};
           
-          // 提取附件中的fileToken
-          let fileToken = '';
-          if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
-            fileToken = fields.attachment[0].file_token || '';
+          // 直接从fileToken字段中获取值 - 飞书表格中不存在附件字段
+          const fileToken = fields.fileToken || '';
+          
+          // 优化匹配逻辑，提高匹配准确率
+          // 1. 先检查精确匹配
+          if (fileToken === imageId) {
+            console.log(`getImageRecordById: 找到精确匹配的fileToken: ${fileToken}`);
+          }
+          // 2. 或者检查部分匹配
+          else if (fileToken && (fileToken.includes(imageId) || imageId.includes(fileToken))) {
+            console.log(`getImageRecordById: 找到部分匹配的fileToken: ${fileToken}, 输入ID: ${imageId}`);
           }
           
-          // 检查fileToken是否与输入的ID匹配
+          // 如果有匹配，处理记录
           if (fileToken && (fileToken === imageId || fileToken.includes(imageId) || imageId.includes(fileToken))) {
-            console.log(`getImageRecordById: 找到匹配的fileToken: ${fileToken}`);
             
             // 处理timestamp字段
             let timestamp = Date.now();
@@ -533,16 +536,16 @@ export async function getImageRecordById(imageId: string) {
               }
             }
             
-            // 返回找到的记录
+            // 返回找到的记录 - 确保字段值都是字符串
             return {
-              id: fields.id || item.record_id || 'unknown',
-              url: fields.url || '',
-              fileToken: fileToken,
-              prompt: fields.prompt || '',
-              timestamp: timestamp,
-              parentId: fields.parentId || null,
-              rootParentId: fields.rootParentId || null,
-              type: fields.type || 'generated'
+              id: String(fields.id || item.record_id || 'unknown'),
+              url: String(fields.url || ''),
+              fileToken: String(fileToken),
+              prompt: String(fields.prompt || ''),
+              timestamp: String(timestamp),
+              parentId: String(fields.parentId || ''),
+              rootParentId: String(fields.rootParentId || ''),
+              type: String(fields.type || 'generated')
             };
           }
         }
@@ -551,13 +554,13 @@ export async function getImageRecordById(imageId: string) {
       // 如果没有找到匹配的记录，直接使用输入的ID作为fileToken
       console.log(`getImageRecordById: 没有找到匹配的记录，直接使用输入的ID作为fileToken: ${imageId}`);
       return {
-        id: imageId,
+        id: String(imageId),
         url: '',
-        fileToken: imageId,
+        fileToken: String(imageId),
         prompt: '',
-        timestamp: Date.now(),
-        parentId: null,
-        rootParentId: null,
+        timestamp: String(Date.now()),  // 转换为字符串类型
+        parentId: '',  // 空字符串而非null
+        rootParentId: '',  // 空字符串而非null
         type: 'uploaded'
       };
     }
@@ -565,7 +568,10 @@ export async function getImageRecordById(imageId: string) {
     // 如果不是飞书图片ID格式，尝试通过ID查询
     console.log(`getImageRecordById: 尝试通过ID查询图片记录: ${imageId}`);
     
-    // 查询特定ID的记录
+    // 给定一个更灵活的过滤条件，分别匹配id和fileToken字段
+    const filter = `OR(CurrentValue.[id] = "${imageId}", CurrentValue.[fileToken] = "${imageId}")`;
+    console.log(`getImageRecordById: 使用更灵活的过滤条件查询: ${filter}`);
+    
     const response = await axios.get(
       `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
       {
@@ -573,8 +579,8 @@ export async function getImageRecordById(imageId: string) {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          filter: `CurrentValue.[id] = "${imageId}"`,
-          page_size: 1  // 只需要一条记录
+          filter: filter,
+          page_size: 10  // 获取多条记录以提高匹配成功率
         }
       }
     );
@@ -591,11 +597,8 @@ export async function getImageRecordById(imageId: string) {
         const item = response.data.data.items[0];
         const fields = item.fields || {};
         
-        // 处理附件字段
-        let fileToken = '';
-        if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
-          fileToken = fields.attachment[0].file_token || '';
-        }
+        // 直接从fileToken字段获取值
+        const fileToken = fields.fileToken || '';
         
         // 如果找到了有效的fileToken，直接返回记录
         if (fileToken) {
@@ -620,14 +623,14 @@ export async function getImageRecordById(imageId: string) {
           console.log(`getImageRecordById: 成功获取图片记录，ID: ${imageId}`);
           
           return {
-            id: fields.id || item.record_id || 'unknown',
-            url: fields.url || '',
-            fileToken: fileToken,
-            prompt: fields.prompt || '',
-            timestamp: timestamp,
-            parentId: fields.parentId || null,
-            rootParentId: fields.rootParentId || null,
-            type: fields.type || 'generated'
+            id: String(fields.id || item.record_id || 'unknown'),
+            url: String(fields.url || ''),
+            fileToken: String(fileToken),
+            prompt: String(fields.prompt || ''),
+            timestamp: String(timestamp),
+            parentId: String(fields.parentId || ''),
+            rootParentId: String(fields.rootParentId || ''),
+            type: String(fields.type || 'generated')
           };
         }
       }
@@ -640,11 +643,8 @@ export async function getImageRecordById(imageId: string) {
         for (const item of response.data.data.items) {
           const fields = item.fields || {};
           
-          // 处理附件字段
-          let fileToken = '';
-          if (fields.attachment && Array.isArray(fields.attachment) && fields.attachment.length > 0) {
-            fileToken = fields.attachment[0].file_token || '';
-          }
+          // 从 fileToken 字段直接获取值
+          const fileToken = fields.fileToken || '';
           
           // 检查fileToken是否匹配或包含输入的ID
           if (fileToken && (fileToken === imageId || fileToken.includes(imageId) || imageId.includes(fileToken))) {
@@ -669,14 +669,14 @@ export async function getImageRecordById(imageId: string) {
             }
             
             return {
-              id: fields.id || item.record_id || 'unknown',
-              url: fields.url || '',
-              fileToken: fileToken,
-              prompt: fields.prompt || '',
-              timestamp: timestamp,
-              parentId: fields.parentId || null,
-              rootParentId: fields.rootParentId || null,
-              type: fields.type || 'generated'
+              id: String(fields.id || item.record_id || 'unknown'),
+              url: String(fields.url || ''),
+              fileToken: String(fileToken),
+              prompt: String(fields.prompt || ''),
+              timestamp: String(timestamp),
+              parentId: String(fields.parentId || ''),
+              rootParentId: String(fields.rootParentId || ''),
+              type: String(fields.type || 'generated')
             };
           }
         }
