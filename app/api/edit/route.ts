@@ -331,7 +331,8 @@ export async function POST(req: NextRequest) {
         success: false,
         error: {
           code: "IMAGE_FETCH_FAILED",
-          message: `获取图片数据失败: ${error instanceof Error ? error.message : '未知错误'}`
+          message: "获取图片数据失败",
+          details: error instanceof Error ? error.message : String(error)
         }
       } as ApiResponse, { status: 400 });
     }
@@ -496,44 +497,15 @@ export async function POST(req: NextRequest) {
     // 如果有parentId和metadata，保存编辑历史
     if (parentId && metadata && metadata.id) {
       try {
-        // 记录编辑历史
-        console.log(`保存编辑历史记录: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
+        // 记录编辑历史，只需设置正确的字段，不需要单独调用API
+        console.log(`设置编辑历史关联: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
         
-        // 调用编辑历史API
-        const historyResponse = await fetch(`${req.nextUrl.origin}/api/edit-history/${parentId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt,
-            resultImageId: metadata.id
-          })
-        });
-        
-        // 增加错误处理，防止JSON解析错误
-        if (historyResponse.ok) {
-          try {
-            const responseText = await historyResponse.text();
-            if (responseText && responseText.trim()) {
-              try {
-                const historyResult = JSON.parse(responseText);
-                console.log('编辑历史记录保存结果:', historyResult);
-              } catch (parseError) {
-                console.error('解析编辑历史响应JSON失败:', parseError, '原始响应:', responseText);
-              }
-            } else {
-              console.warn('编辑历史API返回空响应');
-            }
-          } catch (textError) {
-            console.error('获取编辑历史响应文本失败:', textError);
-          }
-        } else {
-          console.error('编辑历史API返回错误状态:', historyResponse.status, historyResponse.statusText);
-        }
+        // 记录parentId用于构建编辑历史，这些字段已经在saveImage函数中设置
+        // 飞书会通过parentId和rootParentId自动构建编辑链
+        console.log(`编辑历史字段: parentId=${parentId}, 提示词="${prompt}"`);
       } catch (historyError) {
         // 记录错误但不中断主流程
-        console.error('保存编辑历史记录失败:', historyError);
+        console.error('处理编辑历史关联失败:', historyError);
       }
     }
 
