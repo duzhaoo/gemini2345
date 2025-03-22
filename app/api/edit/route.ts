@@ -346,15 +346,27 @@ export async function POST(req: NextRequest) {
       
       // 保存生成的图片
       try {
+        // 确定要使用的rootParentId，优先使用原图片的rootParentId，如果不存在再使用原图片的id
+        const rootParentIdToUse = imageRecord.rootParentId && imageRecord.rootParentId !== '' 
+          ? imageRecord.rootParentId 
+          : imageRecord.id;
+          
+        console.log("图片编辑关系信息:", {
+          原图片ID: imageRecord.id,
+          原图片rootParentId: imageRecord.rootParentId,
+          将使用的rootParentId: rootParentIdToUse,
+          fileToken: currentImageId
+        });
+        
         console.log("开始调用saveImage保存编辑后的图片, 参数:", {
           promptLength: prompt.length,
           mimeType: responseMimeType,
           options: { 
             isUploadedImage,
-            rootParentId: parentId,
+            rootParentId: rootParentIdToUse,
             isVercelEnv: true
           },
-          parentId: currentImageId
+          parentId: imageRecord.id  // 使用原图片的实际ID作为父ID
         });
         
         metadata = await saveImage(
@@ -363,10 +375,10 @@ export async function POST(req: NextRequest) {
           responseMimeType,
           { 
             isUploadedImage,
-            rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
+            rootParentId: rootParentIdToUse,  // 使用正确的rootParentId
             isVercelEnv: true  // 传递Vercel环境标志
           },  
-          currentImageId  // 传递当前图片ID作为直接父ID
+          imageRecord.id  // 使用原图片的实际ID作为父ID，而不是fileToken
         );
         
         console.log("保存图片返回的metadata:", JSON.stringify(metadata, null, 2));

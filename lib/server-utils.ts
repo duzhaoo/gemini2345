@@ -68,6 +68,10 @@ export async function saveImage(
   // 如果提供了parentId，将其添加到元数据中
   if (parentId) {
     metadata.parentId = parentId;
+  } else {
+    // 对于首次生成的图片，将自己的ID设置为parentId
+    metadata.parentId = id;
+    console.log(`saveImage: 首次生成图片，设置parentId为自身ID: ${id}`);
   }
   
   // 如果提供了rootParentId，将其添加到元数据中
