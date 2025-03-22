@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse, ImageOptions } from "@/lib/types";
 import { saveImage } from "@/lib/server-utils";
 import { uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
+import crypto from 'crypto';
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -111,22 +112,38 @@ export async function POST(req: NextRequest) {
     // Save the image and get metadata
     let metadata;
     try {
-      console.log(`开始保存生成的图片...`);
+      // 生成一个唯一ID，将其同时用于图片ID和parentId
+      const id = crypto.randomUUID();
+      
+      const imageOptions = {
+        ...options as ImageOptions,
+        isVercelEnv: true, // 指定在Vercel环境运行
+        rootParentId: id // 直接设置rootParentId也为当前图片ID
+      };
+      
+      console.log(`开始保存生成的图片...，预先生成ID为图片ID和parentId: ${id}`);
+      
+      // 调用saveImage时直接传递图片ID作为parentId
+      console.log(`Generate API - 直接调用saveImage并传递parentId=${id}，用于解决parentId为空的问题`);
+      
       metadata = await saveImage(
         imageData, 
         prompt, 
         mimeType, 
-        { 
-          ...options as ImageOptions,
-          isVercelEnv: true // 指定在Vercel环境运行
-        }
+        imageOptions,
+        id  // 直接传递ID作为parentId参数
       );
       
       if (!metadata) {
         throw new Error(`保存图片失败，返回的元数据为空`);
       }
       
-      console.log(`图片保存成功，ID: ${metadata.id}`);
+      console.log(`图片保存成功，元数据:`, JSON.stringify({
+        id: metadata.id,
+        parentId: metadata.parentId || '空',
+        rootParentId: metadata.rootParentId || '空',
+        提示词长度: prompt.length
+      }, null, 2));
     } catch (saveError) {
       console.error(`保存图片时发生错误:`, saveError);
       return NextResponse.json({

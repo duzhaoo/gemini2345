@@ -2,7 +2,9 @@ import { ImageMetadata, ImageOptions } from './types';
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { uploadImageToFeishu, saveImageRecord } from './feishu';
+import { getNextId } from './counter';
 
 // Create images directory if it doesn't exist
 const imagesDir = path.join(process.cwd(), "public", "generated-images");
@@ -65,14 +67,8 @@ export async function saveImage(
     type: options.isUploadedImage ? "uploaded" : "generated" // 添加类型字段，标识是上传的图片还是生成的图片
   };
   
-  // 如果提供了parentId，将其添加到元数据中
-  if (parentId) {
-    metadata.parentId = parentId;
-  } else {
-    // 对于首次生成的图片，将自己的ID设置为parentId
-    metadata.parentId = id;
-    console.log(`saveImage: 首次生成图片，设置parentId为自身ID: ${id}`);
-  }
+  // 使用自增ID为parentId字段赋值
+  metadata.parentId = String(getNextId());
   
   // 如果提供了rootParentId，将其添加到元数据中
   if (options.rootParentId) {
@@ -127,7 +123,7 @@ export async function saveImage(
       fileToken: fileInfo.fileToken,
       prompt,
       timestamp: new Date().getTime(),
-      parentId,
+      parentId: metadata.parentId,
       rootParentId: metadata.rootParentId, // 传递rootParentId
       type: metadata.type // 传递图片类型字段
     });
