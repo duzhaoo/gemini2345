@@ -83,6 +83,7 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
     
     console.log(`uploadImageToFeishu: 已准备FormData，准备调用API: ${BASE_URL}/im/v1/images`);
     
+    // 添加超时设置
     const response = await axios.post(
       `${BASE_URL}/im/v1/images`,
       formData,
@@ -90,7 +91,8 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
         headers: {
           ...formData.getHeaders(),
           'Authorization': `Bearer ${token}`
-        }
+        },
+        timeout: 30000 // 设置30秒超时
       }
     );
     
