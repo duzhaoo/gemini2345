@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        imageUrl: metadata.url,
+        imageUrl: process.env.VERCEL === '1' && metadata.feishuUrl ? metadata.feishuUrl : metadata.url,
         description: textResponse,
         metadata
       }
