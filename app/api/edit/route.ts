@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
 import { saveImage } from "@/lib/server-utils";
 import { getImageRecordById, getAccessToken, getImageRecords } from "@/lib/feishu";
+import { extractDataFromGeminiResponse, processAndSaveImage, handleImageApiError } from "@/lib/image-utils";
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -417,49 +418,10 @@ export async function POST(req: NextRequest) {
     }
     const response = result.response;
 
-    // 初始化变量
-    let textResponse: string | null = null;
-    let generatedImageData: string | null = null;
-    let responseMimeType = "image/png";
-    metadata = null;
+    // 使用统一函数处理Gemini响应
+    const { textResponse, imageData: generatedImage, mimeType: responseMimeType } = extractDataFromGeminiResponse(response);
 
-    // Process the response
-    try {
-      if (response && response.candidates && response.candidates.length > 0 && 
-          response.candidates[0].content && response.candidates[0].content.parts) {
-        const parts = response.candidates[0].content.parts;
-        console.log(`成功获取响应，包含 ${parts.length} 个部分`);
-        
-        for (const part of parts) {
-          if (part && "inlineData" in part && part.inlineData) {
-            // Get the image data
-            generatedImageData = part.inlineData.data;
-            responseMimeType = part.inlineData.mimeType || "image/png";
-            console.log(`获取到图片数据，类型: ${responseMimeType}`);
-          } else if (part && "text" in part && part.text) {
-            // Store the text
-            textResponse = part.text;
-            console.log(`获取到文本响应: ${textResponse?.substring(0, 50)}...`);
-          } else {
-            console.log(`未知的响应部分类型:`, part);
-          }
-        }
-      } else {
-        console.error(`响应结构不完整:`, response);
-      }
-    } catch (parseError) {
-      console.error(`解析响应时发生错误:`, parseError);
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "RESPONSE_PARSE_ERROR",
-          message: "解析API响应时发生错误",
-          details: parseError instanceof Error ? parseError.message : String(parseError)
-        }
-      } as ApiResponse, { status: 500 });
-    }
-
-    if (!generatedImageData) {
+    if (!generatedImage) {
       return NextResponse.json({
         success: false,
         error: {
@@ -471,8 +433,9 @@ export async function POST(req: NextRequest) {
 
     // 将parentId传递给saveImage函数以及isUploadedImage标记
     try {
-      metadata = await saveImage(
-        generatedImageData,
+      // 使用统一函数保存图像
+      metadata = await processAndSaveImage(
+        generatedImage,
         prompt,
         responseMimeType,
         { 
@@ -483,32 +446,15 @@ export async function POST(req: NextRequest) {
         currentImageId  // 传递当前图片ID作为直接父ID
       );
     } catch (saveError) {
-      console.error(`保存图片时发生错误:`, saveError);
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "IMAGE_SAVE_ERROR",
-          message: "保存生成的图片时发生错误",
-          details: saveError instanceof Error ? saveError.message : String(saveError)
-        }
-      } as ApiResponse, { status: 500 });
+      return handleImageApiError(saveError, "IMAGE_SAVE_ERROR", "保存生成的图片时发生错误");
     }
     
-    // 如果有parentId和metadata，保存编辑历史
+    // 如果有parentId和metadata，记录编辑历史信息
     if (parentId && metadata && metadata.id) {
-      try {
-        // 记录编辑历史，只需设置正确的字段，不需要单独调用API
-        console.log(`设置编辑历史关联: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
-        
-        // 记录parentId用于构建编辑历史，这些字段已经在saveImage函数中设置
-        // 飞书会通过parentId和rootParentId自动构建编辑链
-        console.log(`编辑历史字段: parentId=${parentId}, 提示词="${prompt}"`);
-      } catch (historyError) {
-        // 记录错误但不中断主流程
-        console.error('处理编辑历史关联失败:', historyError);
-      }
+      console.log(`设置编辑历史关联: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
+      console.log(`编辑历史字段: parentId=${parentId}, 提示词="${prompt}"`);
     }
-
+    
     // 定义响应变量
     let responseData = {
       success: true,

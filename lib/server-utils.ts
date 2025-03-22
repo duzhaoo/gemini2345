@@ -96,46 +96,83 @@ export async function saveImage(
     // 自动保存到飞书
     console.log(`saveImage: 正在将图片自动上传到飞书...`);
     
-    // 上传图片到飞书
-    const fileInfo = await uploadImageToFeishu(
-      imageData,
-      `${id}.${extension}`,
-      mimeType
-    );
-    
-    // 检查上传是否发生错误
-    if (fileInfo.error) {
-      console.error(`saveImage: 上传图片到飞书失败: ${fileInfo.errorMessage}`);
-      throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
+    // 验证图片数据的有效性
+    try {
+      // 检查base64数据是否有效
+      if (!imageData || typeof imageData !== 'string') {
+        throw new Error('图片数据无效');
+      }
+      
+      // 检查图片大小，飞书限制为10MB
+      const sizeInBytes = Math.ceil((imageData.length * 3) / 4);
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      console.log(`saveImage: 图片大小约为 ${sizeInMB.toFixed(2)}MB`);
+      
+      if (sizeInMB > 9.5) { // 设置略小于10MB的限制
+        console.warn(`saveImage: 图片过大(${sizeInMB.toFixed(2)}MB)，可能超过飞书限制`);
+      }
+      
+      // 记录图片类型信息
+      console.log(`saveImage: 图片MIME类型: ${mimeType}`);
+    } catch (validationError) {
+      console.error(`saveImage: 图片验证失败: ${validationError.message}`);
+      throw new Error(`图片验证失败: ${validationError.message}`);
     }
     
-    console.log(`saveImage: 图片已上传到飞书，URL: ${fileInfo.url}`);
+    // 上传图片到飞书
+    let fileInfo;
+    try {
+      console.log(`saveImage: 开始上传图片到飞书，ID: ${id}`);
+      fileInfo = await uploadImageToFeishu(
+        imageData,
+        `${id}.${extension}`,
+        mimeType
+      );
+      
+      // 检查上传是否发生错误
+      if (fileInfo.error) {
+        console.error(`saveImage: 上传图片到飞书失败: ${fileInfo.errorMessage}`);
+        throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
+      }
+      
+      console.log(`saveImage: 图片已上传到飞书，URL: ${fileInfo.url}, fileToken: ${fileInfo.fileToken.substring(0, 10)}...`);
+    } catch (uploadError) {
+      console.error(`saveImage: 上传过程中发生错误:`, uploadError);
+      throw new Error(`上传图片到飞书失败: ${uploadError.message}`);
+    }
     
     // 保存记录到飞书多维表格
-    const recordInfo = await saveImageRecord({
-      id,
-      url: fileInfo.url,
-      fileToken: fileInfo.fileToken,
-      prompt,
-      timestamp: new Date().getTime(),
-      parentId,
-      rootParentId: metadata.rootParentId, // 传递rootParentId
-      type: metadata.type // 传递图片类型字段
-    });
-    
-    // 检查保存记录是否成功
-    if (recordInfo.error) {
-      console.error(`saveImage: 保存记录到飞书失败: ${recordInfo.errorMessage}`);
-      throw new Error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
+    let recordInfo;
+    try {
+      console.log(`saveImage: 开始保存记录到飞书多维表格，ID: ${id}`);
+      recordInfo = await saveImageRecord({
+        id,
+        url: fileInfo.url,
+        fileToken: fileInfo.fileToken,
+        prompt,
+        timestamp: new Date().getTime(),
+        parentId,
+        rootParentId: metadata.rootParentId, // 传递rootParentId
+        type: metadata.type // 传递图片类型字段
+      });
+      
+      // 检查保存记录是否成功
+      if (recordInfo.error) {
+        console.error(`saveImage: 保存记录到飞书失败: ${recordInfo.errorMessage}`);
+        throw new Error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
+      }
+      
+      // 检查record_id是否为'error'，这表示保存失败
+      if (recordInfo.record_id === 'error') {
+        console.error(`saveImage: 保存记录到飞书失败，但未提供具体错误信息`);
+        throw new Error(`保存记录到飞书失败，但未提供具体错误信息`);
+      }
+      
+      console.log(`saveImage: 记录已保存到飞书多维表格，record_id: ${recordInfo.record_id}`);
+    } catch (recordError) {
+      console.error(`saveImage: 保存记录过程中发生错误:`, recordError);
+      throw new Error(`保存记录到飞书失败: ${recordError.message}`);
     }
-    
-    // 检查record_id是否为'error'，这表示保存失败
-    if (recordInfo.record_id === 'error') {
-      console.error(`saveImage: 保存记录到飞书失败，但未提供具体错误信息`);
-      throw new Error(`保存记录到飞书失败，但未提供具体错误信息`);
-    }
-    
-    console.log(`saveImage: 记录已保存到飞书多维表格，record_id: ${recordInfo.record_id}`);
     
     // 更新元数据，包含飞书信息
     const updatedMetadata = {

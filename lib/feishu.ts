@@ -82,11 +82,15 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
     });
     
     console.log(`uploadImageToFeishu: 已准备FormData，准备调用API: ${BASE_URL}/im/v1/images`);
+    console.log(`uploadImageToFeishu: 图片大小: ${imageBuffer.length} 字节`);
     
     // 添加超时设置
     console.log(`uploadImageToFeishu: 发送请求到飞书API，开始时间: ${new Date().toISOString()}`);
     let response;
     try {
+      console.log(`uploadImageToFeishu: 开始发送POST请求到 ${BASE_URL}/im/v1/images`);
+      console.log(`uploadImageToFeishu: 请求头部分信息 - Content-Type: ${formData.getHeaders()['content-type']}, Authorization: Bearer ${token.substring(0, 5)}...`);
+      
       response = await axios.post(
         `${BASE_URL}/im/v1/images`,
         formData,
@@ -95,101 +99,155 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
             ...formData.getHeaders(),
             'Authorization': `Bearer ${token}`
           },
-          timeout: 30000, // 设置30秒超时
+          timeout: 60000, // 增加超时时间到60秒
           maxContentLength: Infinity,  // 允许大文件上传
-          maxBodyLength: Infinity      // 允许大请求体
+          maxBodyLength: Infinity,     // 允许大请求体
+          validateStatus: function (status) {
+            // 接受所有状态码，手动处理错误
+            return true;
+          }
         }
       );
+      
+      console.log(`uploadImageToFeishu: 请求已完成，HTTP状态码: ${response.status}, 状态文本: ${response.statusText}`);
+      console.log(`uploadImageToFeishu: 响应头: ${JSON.stringify(response.headers)}`);
       console.log(`uploadImageToFeishu: 请求成功返回，结束时间: ${new Date().toISOString()}`);
     } catch (uploadError) {
       console.error(`uploadImageToFeishu: 请求失败，错误类型: ${uploadError.name}`);
       console.error(`uploadImageToFeishu: 错误消息: ${uploadError.message}`);
+      console.error(`uploadImageToFeishu: 错误堆栈: ${uploadError.stack}`);
       
       if (uploadError.response) {
         console.error(`uploadImageToFeishu: 服务器响应: ${uploadError.response.status} ${uploadError.response.statusText}`);
+        console.error(`uploadImageToFeishu: 响应头: ${JSON.stringify(uploadError.response.headers)}`);
         
         // 检查响应格式，安全处理可能的非JSON响应
         try {
           if (typeof uploadError.response.data === 'string') {
-            console.error(`uploadImageToFeishu: 响应数据(字符串): ${uploadError.response.data.substring(0, 200)}...`);
+            console.error(`uploadImageToFeishu: 响应数据(字符串前200字符): ${uploadError.response.data.substring(0, 200)}...`);
+          } else if (uploadError.response.data instanceof Buffer) {
+            console.error(`uploadImageToFeishu: 响应数据是Buffer，长度: ${uploadError.response.data.length}`);
+          } else if (uploadError.response.data === null || uploadError.response.data === undefined) {
+            console.error(`uploadImageToFeishu: 响应数据为空`);
           } else {
-            console.error(`uploadImageToFeishu: 响应数据:`, uploadError.response.data);
+            try {
+              console.error(`uploadImageToFeishu: 响应数据:`, JSON.stringify(uploadError.response.data).substring(0, 200));
+            } catch (e) {
+              console.error(`uploadImageToFeishu: 无法JSON序列化响应数据:`, typeof uploadError.response.data);
+            }
           }
         } catch (logError) {
           console.error(`uploadImageToFeishu: 无法记录响应数据: ${logError.message}`);
         }
+      } else if (uploadError.request) {
+        // 请求已发出但没有收到响应
+        console.error(`uploadImageToFeishu: 请求已发送但无响应，可能是网络超时`);
+        console.error(`uploadImageToFeishu: 请求信息:`, {
+          method: uploadError.request.method || 'unknown',
+          path: uploadError.request.path || 'unknown',
+          host: uploadError.request.host || 'unknown'
+        });
+      } else {
+        // 设置请求时发生了错误
+        console.error(`uploadImageToFeishu: 请求设置错误: ${uploadError.message}`);
       }
       
       throw uploadError; // 重新抛出错误以便上层捕获
     }
     
-    // 确保响应数据是有效的JSON格式
+    // 解析响应
     try {
-      console.log(`uploadImageToFeishu: 收到飞书上传响应，状态码: ${response.status}`);
+      console.log(`uploadImageToFeishu: 解析响应，状态码: ${response.status}`);
       
-      // 检查响应是否为字符串，如果是则尝试解析为JSON
+      // 检查HTTP状态码
+      if (response.status >= 400) {
+        console.error(`uploadImageToFeishu: HTTP错误，状态码: ${response.status}, 状态文本: ${response.statusText}`);
+        
+        // 尝试分析错误响应内容
+        let errorDetail = '';
+        try {
+          if (typeof response.data === 'string') {
+            // 尝试解析可能是HTML格式的错误页面
+            if (response.data.includes('<html') || response.data.includes('<!DOCTYPE')) {
+              errorDetail = '服务器返回了HTML错误页面，可能是权限问题或认证失败';
+              console.error(`uploadImageToFeishu: 收到HTML错误页面，前200字符: ${response.data.substring(0, 200)}`);
+            } else {
+              errorDetail = `服务器返回: ${response.data.substring(0, 100)}...`;
+            }
+          } else if (response.data && typeof response.data === 'object') {
+            errorDetail = JSON.stringify(response.data).substring(0, 100);
+          }
+        } catch (e) {
+          errorDetail = '无法解析错误响应';
+        }
+        
+        return {
+          url: '',
+          fileToken: `error-http-${response.status}`,
+          error: true,
+          errorMessage: `HTTP错误 ${response.status}: ${response.statusText}. ${errorDetail}`
+        };
+      }
+      
+      // 处理可能的非JSON响应
       if (typeof response.data === 'string') {
+        console.log(`uploadImageToFeishu: 收到字符串响应，尝试解析为JSON`);
         try {
           response.data = JSON.parse(response.data);
           console.log(`uploadImageToFeishu: 成功将字符串响应解析为JSON`);
         } catch (parseError) {
-          console.error(`uploadImageToFeishu: 无法将响应解析为JSON: ${parseError.message}`);
-          console.error(`uploadImageToFeishu: 原始响应: ${response.data.substring(0, 200)}...`);
-          throw new Error(`飞书API返回了非JSON格式的响应: ${response.data.substring(0, 100)}...`);
+          console.error(`uploadImageToFeishu: 响应不是有效的JSON:`, parseError.message);
+          console.error(`uploadImageToFeishu: 原始响应前200字符: ${response.data.substring(0, 200)}...`);
+          
+          // 判断是否是HTML响应(可能是认证错误页面)
+          if (response.data.includes('<html') || response.data.includes('<!DOCTYPE')) {
+            console.error(`uploadImageToFeishu: 响应是HTML页面，可能是认证失败或重定向`);
+            return {
+              url: '',
+              fileToken: 'error-html-response',
+              error: true,
+              errorMessage: '服务器返回了HTML页面而非API响应，可能是认证失败'
+            };
+          }
+          
+          return {
+            url: '',
+            fileToken: 'error-invalid-json',
+            error: true,
+            errorMessage: `非JSON响应: ${response.data.substring(0, 100)}...`
+          };
         }
       }
       
-      console.log(`uploadImageToFeishu: 飞书上传响应代码: ${response.data.code}`);
-    
-      if (response.data.code === 0) {
-        const imageKey = response.data.data.image_key;
-        const url = `${BASE_URL}/im/v1/images/${imageKey}`;
-        
-        console.log(`uploadImageToFeishu: 图片上传成功! image_key: ${imageKey}`);
-        console.log(`uploadImageToFeishu: 完整URL: ${url}`);
-        console.log("======= 飞书图片上传完成 =======");
-        
+      // 检查飞书API返回码
+      if (response.data && response.data.code !== 0) {
+        console.error(`uploadImageToFeishu: 飞书API错误，代码: ${response.data.code}, 消息: ${response.data.msg}`);
         return {
-          fileToken: imageKey,
-          url: url,
-          name: fileName
+          url: '',
+          fileToken: `error-api-${response.data.code}`,
+          error: true,
+          errorMessage: `API错误 ${response.data.code}: ${response.data.msg}`
         };
-      } else {
-        console.error(`uploadImageToFeishu: 上传失败! 错误码: ${response.data.code}, 消息: ${response.data.msg}`);
-        throw new Error(`上传图片失败，响应: ${JSON.stringify(response.data)}`);
-      }
-    } catch (error) {
-      // 增强错误日志
-      console.error('======= 飞书图片上传错误 =======');
-      console.error(`uploadImageToFeishu: 上传图片到飞书出错，类型: ${error?.name}，消息: ${error?.message}`);
-      
-      if (error.response) {
-        console.error('uploadImageToFeishu: 收到错误响应:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          headers: error.response.headers,
-          data: error.response.data
-        });
-      } else if (error.request) {
-        console.error('uploadImageToFeishu: 已发送请求但未收到响应:', {
-          method: error.request.method,
-          path: error.request.path,
-          host: error.request.host
-        });
-      } else {
-        console.error(`uploadImageToFeishu: 发送请求前出错: ${error.message}`);
-        console.error(`uploadImageToFeishu: 错误堆栈: ${error.stack}`);
       }
       
-      // 重要：修改为返回带有错误标记的对象，而不是模拟成功响应
-      // 这样可以更容易地追踪问题
-      console.error("uploadImageToFeishu: 返回错误标记，图片上传失败");
+      // 提取图片信息
+      const imageKey = response.data.data.image_key;
+      const imageUrl = `https://open.feishu.cn/open-apis/image/v4/get?image_key=${imageKey}`;
+      
+      console.log(`uploadImageToFeishu: 图片上传成功，image_key: ${imageKey}`);
+      console.log(`uploadImageToFeishu: 图片URL: ${imageUrl}`);
+      
       return {
-        fileToken: `error-${Date.now()}`,
-        url: `/generated-images/${fileName}`, // 使用本地路径作为备份
-        name: fileName,
+        url: imageUrl,
+        fileToken: imageKey
+      };
+    } catch (error) {
+      console.error(`uploadImageToFeishu: 处理响应时发生错误:`, error.message);
+      return {
+        url: '',
+        fileToken: 'error-processing-response',
         error: true,
-        errorMessage: error?.message || '未知错误'
+        errorMessage: `处理响应时发生错误: ${error.message}`
       };
     }
   } catch (error: any) {
@@ -215,105 +273,140 @@ export async function saveImageRecord(imageData: {
   // editGroupId字段已被移除，仅使用parentId进行编辑历史构建
 }) {
   try {
-    console.log(`saveImageRecord: 开始获取访问令牌...`);
-    const token = await getAccessToken();
-    console.log(`saveImageRecord: 成功获取访问令牌`);
+    console.log("======= 开始保存图片记录到飞书 =======");
+    console.log(`saveImageRecord: 保存图片记录: ID=${imageData.id}, prompt长度=${imageData.prompt?.length || 0}`);
+    console.log(`saveImageRecord: 图片参数检查 - fileToken存在: ${!!imageData.fileToken}, URL存在: ${!!imageData.url}, 父ID: ${imageData.parentId || '无'}`);
     
-    // 对时间进行格式化处理
-    let formattedDate = new Date().toISOString();
-    console.log(`saveImageRecord: 格式化时间戳，ISO格式: ${formattedDate}`);
-    
-    // 准备完整的请求体，包含更多字段以保存完整的编辑历史
-    const fields: any = {
-      id: imageData.id,
-      prompt: imageData.prompt,
-      url: imageData.url,
-      timestamp: formattedDate // 使用ISO格式的时间戳
-    };
-    
-    // 添加父图片ID（如果存在）
-    if (imageData.parentId) {
-      fields.parentId = imageData.parentId;
-      console.log(`saveImageRecord: 添加父图片ID: ${imageData.parentId}`);
-    }
-    
-    // 添加根父图片ID（如果存在）
-    if (imageData.rootParentId) {
-      fields.rootParentId = imageData.rootParentId;
-      console.log(`saveImageRecord: 添加根父图片ID: ${imageData.rootParentId}`);
-    }
-    
-    // 添加类型字段（如果存在）
-    if (imageData.type) {
-      fields.type = imageData.type; // 飞书表格已添加type字段，可以正常发送
-      console.log(`saveImageRecord: 添加图片类型: ${imageData.type}`);
-    }
-    
-    // 添加fileToken（如果存在）
-    if (imageData.fileToken) {
-      fields.fileToken = imageData.fileToken;
-      console.log(`saveImageRecord: 添加fileToken: ${imageData.fileToken}`);
-    }
-    
-    // editGroupId已移除，不再设置
-    
-    const requestBody = {
-      fields
-    };
-    
-    console.log(`saveImageRecord: 请求体详情:`, JSON.stringify(requestBody, null, 2));
-    console.log(`saveImageRecord: 飞书参数 - APP_TOKEN: ${APP_TOKEN}, TABLE_ID: ${TABLE_ID}`);
-    
-    // 定义API请求URL
-    const apiUrl = `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`;
-    console.log(`saveImageRecord: 请求URL: ${apiUrl}`);
-    
-    // 发送API请求
-    const response = await axios({
-      method: 'POST',
-      url: apiUrl,
-      data: requestBody,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    console.log(`saveImageRecord: 收到响应，状态码: ${response.status}`);
-    
-    // 打印完整响应
-    console.log(`saveImageRecord: 完整响应数据:`, JSON.stringify(response.data, null, 2));
-
-    // 处理响应结果
-    if (response.data && response.data.code === 0) {
-      console.log(`saveImageRecord: 成功保存记录，ID: ${response.data.data?.record?.record_id}`);
+    // 检查fileToken是否标记为错误
+    if (imageData.fileToken && imageData.fileToken.startsWith('error-')) {
+      console.error(`saveImageRecord: 检测到fileToken错误标记: ${imageData.fileToken}`);
       return {
-        id: imageData.id,
-        record_id: response.data.data?.record?.record_id || 'unknown'
+        record_id: 'error',
+        error: true,
+        errorMessage: '图片上传失败，无法保存记录'
       };
-    } else {
-      console.error(`saveImageRecord: 保存失败，错误码: ${response.data?.code}, 错误字段: ${response.data?.data?.invalid_field || '未知'}, 消息: ${response.data?.msg}`);
-      return { id: imageData.id, record_id: 'error' };
-    }
-  } catch (error: any) {
-    // 错误处理
-    console.error('saveImageRecord: 保存飞书记录出错:');
-    if (error.response) {
-      console.error('saveImageRecord: API错误响应:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      });
-    } else {
-      console.error(`saveImageRecord: 错误详情: ${error.message}`);
     }
     
-    // 返回带有错误标记的对象，便于上层调用方检测错误
-    return { 
-      id: imageData.id, 
+    const token = await getAccessToken();
+    console.log(`saveImageRecord: 获取飞书access_token成功，令牌长度: ${token.length}`);
+    
+    // 检查APP_TOKEN和TABLE_ID
+    if (!APP_TOKEN || !TABLE_ID) {
+      console.error(`saveImageRecord: 缺少必要的环境变量，APP_TOKEN存在: ${!!APP_TOKEN}, TABLE_ID存在: ${!!TABLE_ID}`);
+      throw new Error('缺少必要的环境变量: APP_TOKEN 或 TABLE_ID');
+    }
+    
+    // 构建记录字段
+    const fields = {
+      id: imageData.id,
+      file_token: imageData.fileToken,
+      url: imageData.url,
+      prompt: imageData.prompt || '未提供提示词',
+      timestamp: imageData.timestamp,
+      parentId: imageData.parentId || '',
+      rootParentId: imageData.rootParentId || '' // 添加rootParentId字段
+    };
+    
+    console.log(`saveImageRecord: 已构建记录字段，准备发送请求`);
+    
+    try {
+      console.log(`saveImageRecord: 开始POST请求: ${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`);
+      
+      const response = await axios.post(
+        `${BASE_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records`,
+        {
+          fields
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000,
+          validateStatus: function (status) {
+            // 接受所有状态码，手动处理错误
+            return true;
+          }
+        }
+      );
+      
+      console.log(`saveImageRecord: 收到响应，HTTP状态码: ${response.status}, 状态文本: ${response.statusText}`);
+      console.log(`saveImageRecord: 响应头: ${JSON.stringify(response.headers || {})}`);
+      
+      // 分析响应内容
+      if (typeof response.data === 'string') {
+        try {
+          response.data = JSON.parse(response.data);
+          console.log(`saveImageRecord: 成功将字符串响应解析为JSON`);
+        } catch (parseError) {
+          console.error(`saveImageRecord: 无法解析响应为JSON: ${parseError.message}`);
+          console.error(`saveImageRecord: 原始响应前200字符: ${response.data.substring(0, 200)}...`);
+          
+          // 返回错误，但不中断流程
+          return {
+            record_id: 'error',
+            error: true,
+            errorMessage: `非JSON响应: ${response.data.substring(0, 100)}...`
+          };
+        }
+      }
+      
+      // 检查响应状态码
+      if (response.status >= 400) {
+        console.error(`saveImageRecord: HTTP错误 ${response.status}: ${response.statusText}`);
+        console.error(`saveImageRecord: 错误响应:`, response.data);
+        
+        return {
+          record_id: 'error',
+          error: true,
+          errorMessage: `HTTP错误 ${response.status}: ${response.statusText}`
+        };
+      }
+      
+      console.log(`saveImageRecord: 飞书API响应码: ${response.data.code}`);
+      
+      if (response.data.code === 0) {
+        const recordId = response.data.data.record_id;
+        console.log(`saveImageRecord: 成功保存记录到飞书，记录ID: ${recordId}`);
+        console.log("======= 保存图片记录到飞书完成 =======");
+        
+        return {
+          record_id: recordId
+        };
+      } else {
+        console.error(`saveImageRecord: 飞书API错误，代码: ${response.data.code}, 消息: ${response.data.msg}`);
+        
+        // 返回详细错误信息
+        return {
+          record_id: 'error',
+          error: true,
+          errorMessage: `API错误: ${response.data.code} - ${response.data.msg}`
+        };
+      }
+    } catch (apiError) {
+      console.error(`saveImageRecord: 请求飞书API出错:`, apiError.message);
+      
+      if (apiError.response) {
+        console.error(`saveImageRecord: 错误响应状态: ${apiError.response.status}`);
+        console.error(`saveImageRecord: 错误响应内容:`, apiError.response.data);
+      }
+      
+      if (apiError.request) {
+        console.error(`saveImageRecord: 请求已发送但无响应，可能是网络问题`);
+      }
+      
+      return {
+        record_id: 'error',
+        error: true,
+        errorMessage: `请求错误: ${apiError.message}`
+      };
+    }
+  } catch (error) {
+    console.error(`saveImageRecord: 保存图片记录失败:`, error);
+    return {
       record_id: 'error',
       error: true,
-      errorMessage: error instanceof Error ? error.message : '保存图片记录失败' 
+      errorMessage: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -465,9 +558,8 @@ export async function getImageRecordById(imageId: string) {
               }
             }
             
-            // 返回找到的记录
             return {
-              id: fields.id || item.record_id || 'unknown',
+              id: fields.id || item.record_id || 'unknown', // 使用record_id作为备选
               url: fields.url || '',
               fileToken: fileToken,
               prompt: fields.prompt || '',

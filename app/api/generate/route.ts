@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse, ImageOptions } from "@/lib/types";
 import { saveImage } from "@/lib/server-utils";
 import { uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
+import { extractDataFromGeminiResponse, processAndSaveImage, handleImageApiError } from "@/lib/image-utils";
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -77,26 +78,8 @@ export async function POST(req: NextRequest) {
     }
     const response = result.response;
 
-    let textResponse = null;
-    let imageData = null;
-    let mimeType = "image/png";
-
-    // Process the response
-    if (response && response.candidates && response.candidates.length > 0 && 
-        response.candidates[0].content && response.candidates[0].content.parts) {
-      const parts = response.candidates[0].content.parts;
-      
-      for (const part of parts) {
-        if (part && "inlineData" in part && part.inlineData) {
-          // Get the image data
-          imageData = part.inlineData.data;
-          mimeType = part.inlineData.mimeType || "image/png";
-        } else if (part && "text" in part && part.text) {
-          // Store the text
-          textResponse = part.text;
-        }
-      }
-    }
+    // 使用统一函数处理Gemini响应
+    let { textResponse, imageData, mimeType } = extractDataFromGeminiResponse(response);
 
     if (!imageData) {
       return NextResponse.json({
@@ -108,35 +91,21 @@ export async function POST(req: NextRequest) {
       } as ApiResponse, { status: 500 });
     }
 
-    // Save the image and get metadata
+    // 使用统一函数保存图像
     let metadata;
     try {
       console.log(`开始保存生成的图片...`);
-      metadata = await saveImage(
+      metadata = await processAndSaveImage(
         imageData, 
         prompt, 
         mimeType, 
         { 
           ...options as ImageOptions,
-          isVercelEnv: true // 指定在Vercel环境运行
+          isVercelEnv: true
         }
       );
-      
-      if (!metadata) {
-        throw new Error(`保存图片失败，返回的元数据为空`);
-      }
-      
-      console.log(`图片保存成功，ID: ${metadata.id}`);
     } catch (saveError) {
-      console.error(`保存图片时发生错误:`, saveError);
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "IMAGE_SAVE_ERROR",
-          message: "保存生成的图片时发生错误",
-          details: saveError instanceof Error ? saveError.message : String(saveError)
-        }
-      } as ApiResponse, { status: 500 });
+      return handleImageApiError(saveError, "IMAGE_SAVE_ERROR", "保存生成的图片时发生错误");
     }
 
     // Return the image URL, description, and metadata as JSON
