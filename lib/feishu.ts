@@ -242,16 +242,48 @@ export async function saveImageRecord(metadata: {
       
       console.log(`saveImageRecord: 记录保存成功，HTTP状态码: ${response.status}`);
       
-      // 处理成功响应
-      if (response.data && response.data.code === 0 && response.data.data && response.data.data.record_id) {
-        const recordId = response.data.data.record_id;
-        console.log(`saveImageRecord: 成功保存记录到飞书，记录ID: ${recordId}`);
-        console.log("======= 保存图片记录到飞书完成 =======");
+      // 处理API响应并提取数据
+      try {
+        if (!response.data) {
+          console.error('saveImageRecord: API返回的数据为空');
+          return {
+            error: true,
+            errorMessage: 'API返回数据为空',
+            record_id: 'error'
+          };
+        }
         
-        return {
-          record_id: recordId
-        };
-      } else {
+        // 检查飞书API成功响应的几种情况
+        const isSuccessResponse = (
+          // 标准成功响应
+          (response.data.code === 0 && response.data.data && response.data.data.record_id) ||
+          // 或者另一种成功格式
+          (response.data.code === 0 && response.data.msg === 'success' && 
+           response.data.data && response.data.data.record)
+        );
+        
+        if (isSuccessResponse) {
+          // 提取记录ID (可能在不同位置)
+          let recordId;
+          if (response.data.data.record_id) {
+            recordId = response.data.data.record_id;
+          } else if (response.data.data.record && response.data.data.record.record_id) {
+            recordId = response.data.data.record.record_id;
+          } else if (response.data.data.record && response.data.data.record.id) {
+            recordId = response.data.data.record.id;
+          } else {
+            recordId = '未知ID'; // 提供一个默认值
+            console.warn('saveImageRecord: 无法从成功响应中提取记录ID');
+          }
+          
+          console.log(`saveImageRecord: 成功保存记录到飞书，记录ID: ${recordId}`);
+          console.log("======= 保存图片记录到飞书完成 =======");
+          
+          return {
+            record_id: recordId
+          };
+        }
+        
         // 处理API返回的错误
         const errorCode = response.data.code || -1;
         const errorMsg = response.data.msg || '未知API错误';
@@ -294,40 +326,51 @@ export async function saveImageRecord(metadata: {
           error: true,
           errorMessage: `飞书API错误: ${errorCode} - ${errorMsg}`
         };
+      } catch (error) {
+        // 处理请求错误
+        console.error(`saveImageRecord: 请求飞书API出错: ${error.message}`);
+        
+        if (error.response) {
+          // 服务器响应了，但状态码不是2xx
+          console.error(`saveImageRecord: 服务器返回错误状态码: ${error.response.status}`);
+          console.error(`saveImageRecord: 响应数据:`, error.response.data);
+          
+          return {
+            record_id: 'error',
+            error: true,
+            errorMessage: `服务器错误: ${error.response.status} - ${error.response.statusText || '未知错误'}`
+          };
+        } else if (error.request) {
+          // 请求已发出但没有收到响应
+          console.error(`saveImageRecord: 请求已发送但无响应，可能是超时或网络问题`);
+          
+          return {
+            record_id: 'error',
+            error: true,
+            errorMessage: `网络错误: 请求超时或无响应`
+          };
+        } else {
+          // 设置请求时发生了错误
+          console.error(`saveImageRecord: 请求配置错误: ${error.message}`);
+          
+          return {
+            record_id: 'error',
+            error: true,
+            errorMessage: `请求配置错误: ${error.message}`
+          };
+        }
       }
     } catch (error) {
-      // 处理请求错误
-      console.error(`saveImageRecord: 请求飞书API出错: ${error.message}`);
+      // 捕获所有其他错误
+      console.error(`saveImageRecord: 意外错误: ${error.message}`);
+      console.error(`saveImageRecord: 错误堆栈: ${error.stack}`);
+      console.error("======= 保存图片记录到飞书异常中断 =======");
       
-      if (error.response) {
-        // 服务器响应了，但状态码不是2xx
-        console.error(`saveImageRecord: 服务器返回错误状态码: ${error.response.status}`);
-        console.error(`saveImageRecord: 响应数据:`, error.response.data);
-        
-        return {
-          record_id: 'error',
-          error: true,
-          errorMessage: `服务器错误: ${error.response.status} - ${error.response.statusText || '未知错误'}`
-        };
-      } else if (error.request) {
-        // 请求已发出但没有收到响应
-        console.error(`saveImageRecord: 请求已发送但无响应，可能是超时或网络问题`);
-        
-        return {
-          record_id: 'error',
-          error: true,
-          errorMessage: `网络错误: 请求超时或无响应`
-        };
-      } else {
-        // 设置请求时发生了错误
-        console.error(`saveImageRecord: 请求配置错误: ${error.message}`);
-        
-        return {
-          record_id: 'error',
-          error: true,
-          errorMessage: `请求配置错误: ${error.message}`
-        };
-      }
+      return {
+        record_id: 'error',
+        error: true,
+        errorMessage: `意外错误: ${error.message}`
+      };
     }
   } catch (error) {
     // 捕获所有其他错误
