@@ -312,8 +312,19 @@ export async function POST(req: NextRequest) {
       // 获取图片记录和数据
       const { imageData, mimeType, imageRecord } = await fetchImageFromFeishu(currentImageId);
       
-      // 设置父ID和类型
-      parentId = imageRecord.id || currentImageId; 
+      // 检查是否获取到了有效的系统内部ID
+      if (!imageRecord.id) {
+        return NextResponse.json({
+          success: false,
+          error: {
+            code: "INVALID_IMAGE_ID",
+            message: "无法获取图片的系统内部ID"
+          }
+        } as ApiResponse, { status: 400 });
+      }
+      
+      // 设置父ID和类型，只使用系统内部ID
+      parentId = imageRecord.id;
       isUploadedImage = imageRecord.type === "uploaded";
       
       console.log("图片类型检查:", { 
