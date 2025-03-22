@@ -109,51 +109,45 @@ export async function POST(req: NextRequest) {
     }
 
     // Save the image and get metadata
-    const metadata = await saveImage(
-      imageData, 
-      prompt, 
-      mimeType, 
-      options as ImageOptions
-    );
-
-    // 上传到飞书文件存储(新增功能)
+    let metadata;
     try {
-      console.log(`开始上传图片到飞书，图片ID: ${metadata.id}`);
+      console.log(`开始保存生成的图片...`);
+      metadata = await saveImage(
+        imageData, 
+        prompt, 
+        mimeType, 
+        { 
+          ...options as ImageOptions,
+          isVercelEnv: true // 指定在Vercel环境运行
+        }
+      );
       
-      const fileName = `${metadata.id}.png`;
-      console.log(`正在调用uploadImageToFeishu，文件名: ${fileName}, MIME类型: ${mimeType}`);
+      if (!metadata) {
+        throw new Error(`保存图片失败，返回的元数据为空`);
+      }
       
-      const fileInfo = await uploadImageToFeishu(imageData, fileName, mimeType);
-      console.log(`图片成功上传到飞书，获取到文件信息:`, {
-        url: fileInfo.url,
-        fileToken: fileInfo.fileToken
-      });
-      
-      // 注意: 不在这里调用saveImageRecord，避免重复保存
-      // saveImageRecord已经在saveImage函数中被调用
-      
-      // 增强返回的元数据
-      metadata.feishuUrl = fileInfo.url;
-      metadata.feishuFileToken = fileInfo.fileToken;
-      console.log(`飞书同步完成，已更新元数据`);
-    } catch (feishuError: any) {
-      // 如果飞书存储失败，记录错误但不影响原功能
-      console.error("飞书存储失败，但原功能正常。错误详情:", {
-        message: feishuError?.message,
-        stack: feishuError?.stack,
-        response: feishuError?.response?.data
-      });
-      metadata.feishuSyncFailed = true;
+      console.log(`图片保存成功，ID: ${metadata.id}`);
+    } catch (saveError) {
+      console.error(`保存图片时发生错误:`, saveError);
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "IMAGE_SAVE_ERROR",
+          message: "保存生成的图片时发生错误",
+          details: saveError instanceof Error ? saveError.message : String(saveError)
+        }
+      } as ApiResponse, { status: 500 });
     }
 
     // Return the image URL, description, and metadata as JSON
     return NextResponse.json({
       success: true,
       data: {
-        imageUrl: process.env.VERCEL === '1' && metadata.feishuUrl ? metadata.feishuUrl : metadata.url,
+        // 如果在Vercel环境中并且有飞书URL，则使用飞书URL
+        imageUrl: metadata.feishuUrl || metadata.url,
         description: textResponse,
         metadata,
-        isVercelEnv: process.env.VERCEL === '1'
+        isVercelEnv: true
       }
     } as ApiResponse);
   } catch (error) {
