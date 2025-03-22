@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
-import { saveImage, fetchImageFromUrl, getImageIdFromUrl, initDirectories } from "@/lib/server-utils";
-import { promises as fs } from 'fs';
-import path from 'path';
-import { getImageRecordById, getAccessToken } from "@/lib/feishu";
+import { saveImage } from "@/lib/server-utils";
+import { getImageRecordById, getAccessToken, getImageRecords } from "@/lib/feishu";
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -15,14 +13,7 @@ const MODEL_ID = "gemini-2.0-flash-exp";
 
 export async function POST(req: NextRequest) {
   try {
-    // 检测是否在Vercel环境中
-    const isVercelEnvironment = process.env.VERCEL === '1';
-    console.log(`编辑图片API - 当前环境: ${isVercelEnvironment ? 'Vercel' : '本地开发'}`);
-    
-    // 仅在本地环境初始化目录
-    if (!isVercelEnvironment) {
-      await initDirectories();
-    }
+    console.log(`编辑图片API - 当前环境: Vercel`);
     
     // Parse JSON request
     const requestData = await req.json();
@@ -52,18 +43,19 @@ export async function POST(req: NextRequest) {
     let currentImageId: string | undefined;
     let parentId: string | undefined;
     let isUploadedImage = false;
+    let metadata: any = null;
+
     
-    if (isVercelEnvironment) {
-      // 在Vercel环境中，必须使用飞书URL，不能使用本地URL
-      if (!imageUrl.includes('open.feishu.cn')) {
-        return NextResponse.json({
-          success: false,
-          error: {
-            code: "INVALID_URL_IN_VERCEL",
-            message: "在Vercel环境中只能使用飞书URL"
-          }
-        } as ApiResponse, { status: 400 });
-      }
+    // 必须使用飞书URL，不能使用本地URL
+    if (!imageUrl.includes('open.feishu.cn')) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "INVALID_URL_IN_VERCEL",
+          message: "在Vercel环境中只能使用飞书URL"
+        }
+      } as ApiResponse, { status: 400 });
+    }
       
       // 从飞书URL中提取图片ID
       try {
@@ -71,6 +63,8 @@ export async function POST(req: NextRequest) {
         
         // 处理特殊格式的图片ID
         // 检查是否是已知的图片ID格式，例如 img_v3_02kk_XXXX
+        let foundValidImageRecord = false; // 标记是否找到有效记录
+        
         if (imageUrl.includes('img_v3_')) {
           const matches = imageUrl.match(/img_v3_[\w-]+/);
           if (matches && matches[0]) {
@@ -83,183 +77,217 @@ export async function POST(req: NextRequest) {
               console.log(`成功获取图片记录: ${JSON.stringify(imageRecord)}`);
               parentId = imageRecord.parentId || currentImageId;
               isUploadedImage = imageRecord.type === "uploaded";
+              foundValidImageRecord = true; // 设置标记为已找到
             } else {
               console.log(`未找到图片ID的记录: ${currentImageId}`);
-            }
-            
-            // 如果找到了ID就跳过其他提取方法
-            if (imageRecord && imageRecord.fileToken) {
-              console.log(`已找到有效记录，跳过其他提取方法`);
-              return;
             }
           }
         }
         
-        // 尝试从飞书获取图片记录
-        // 假设 URL格式为 https://open.feishu.cn/...?id=xxx 或者包含在某个路径中
-        const urlObj = new URL(imageUrl);
-        const idFromQuery = urlObj.searchParams.get('id');
-        
-        if (idFromQuery) {
-          currentImageId = idFromQuery;
-          console.log(`从URL查询参数中提取到ID: ${currentImageId}`);
-          
-          // 从飞书获取图片记录
-          const imageRecord = await getImageRecordById(currentImageId);
-          if (imageRecord && imageRecord.fileToken) {
-            console.log(`成功获取图片记录: ${JSON.stringify(imageRecord)}`);
-            parentId = imageRecord.parentId || currentImageId;
-            isUploadedImage = imageRecord.type === "uploaded";
-          } else {
-            console.log(`未找到图片ID的记录: ${currentImageId}`);
-          }
+        // 如果已经找到有效记录，跳过后续提取方法
+        if (foundValidImageRecord) {
+          console.log(`已找到有效记录，跳过其他提取方法`);
         } else {
-          // 如果URL中没有ID参数，尝试从路径中提取
-          const pathParts = urlObj.pathname.split('/');
+          // 尝试从飞书获取图片记录
+          // 假设 URL格式为 https://open.feishu.cn/...?id=xxx 或者包含在某个路径中
+          const urlObj = new URL(imageUrl);
+          const idFromQuery = urlObj.searchParams.get('id');
           
-          // 尝试从路径中找到最可能是ID的部分
-          for (let i = pathParts.length - 1; i >= 0; i--) {
-            const part = pathParts[i];
-            if (part && part.length > 8) {
-              console.log(`从路径中提取到可能的ID: ${part}`);
+          if (idFromQuery) {
+            currentImageId = idFromQuery;
+            console.log(`从URL查询参数中提取到ID: ${currentImageId}`);
+            
+            // 从飞书获取图片记录
+            const imageRecord = await getImageRecordById(currentImageId);
+            if (imageRecord && imageRecord.fileToken) {
+              console.log(`成功获取图片记录: ${JSON.stringify(imageRecord)}`);
+              parentId = imageRecord.parentId || currentImageId;
+              isUploadedImage = imageRecord.type === "uploaded";
+            } else {
+              console.log(`未找到图片ID的记录: ${currentImageId}`);
+            }
+          } else {
+            // 如果URL中没有ID参数，尝试从路径中提取
+            const pathParts = urlObj.pathname.split('/');
+            
+              // 尝试从路径中找到最可能是ID的部分
+            for (let i = pathParts.length - 1; i >= 0; i--) {
+              const part = pathParts[i];
+              if (part && part.length > 8) {
+                console.log(`从路径中提取到可能的ID: ${part}`);
+                
+                // 尝试使用这个部分作为ID
+                const imageRecord = await getImageRecordById(part);
+                if (imageRecord && imageRecord.fileToken) {
+                  currentImageId = part;
+                  console.log(`成功获取图片记录: ${JSON.stringify(imageRecord)}`);
+                  parentId = imageRecord.parentId || currentImageId;
+                  isUploadedImage = imageRecord.type === "uploaded";
+                  break;
+                } else {
+                  console.log(`路径部分不是有效ID: ${part}`);
+                }
+              }
+            }
+          }
+          
+          // 如果仍然没有找到，尝试从整个URL中提取所有可能的ID格式
+          if (!currentImageId || !(await getImageRecordById(currentImageId))?.fileToken) {
+            console.log(`尝试从整个URL中提取所有可能的ID格式`);
+            
+            // 尝试匹配UUID格式
+            const uuidMatches = imageUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+            if (uuidMatches && uuidMatches[0]) {
+              const potentialId = uuidMatches[0];
+              console.log(`从 URL中提取到UUID格式的可能 ID: ${potentialId}`);
               
-              // 尝试使用这个部分作为ID
-              const imageRecord = await getImageRecordById(part);
+              const imageRecord = await getImageRecordById(potentialId);
               if (imageRecord && imageRecord.fileToken) {
-                currentImageId = part;
-                console.log(`成功获取图片记录: ${JSON.stringify(imageRecord)}`);
+                currentImageId = potentialId;
+                console.log(`UUID格式是有效ID: ${currentImageId}`);
                 parentId = imageRecord.parentId || currentImageId;
                 isUploadedImage = imageRecord.type === "uploaded";
-                break;
-              } else {
-                console.log(`路径部分不是有效ID: ${part}`);
               }
             }
           }
         }
+      } catch (err) {
+          console.error("从飞书URL提取图片ID失败:", err);
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: "FEISHU_URL_PARSE_ERROR",
+              message: "无法从飞书URL提取图片ID"
+            }
+          } as ApiResponse, { status: 400 });
+        }
         
-        // 如果仍然没有找到，尝试从整个URL中提取所有可能的ID格式
-        if (!currentImageId || !(await getImageRecordById(currentImageId))?.fileToken) {
-          console.log(`尝试从整个URL中提取所有可能的ID格式`);
+        // 如果无法获取图片ID，返回错误
+        if (!currentImageId) {
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: "MISSING_IMAGE_ID",
+              message: "无法从飞书URL获取图片ID"
+            }
+          } as ApiResponse, { status: 400 });
+        }
+        
+        // 验证图片ID是否有效（是否能获取到有效的fileToken）
+        let imageRecord = await getImageRecordById(currentImageId);
+        
+        // 如果无法获取图片记录或fileToken，尝试从飞书获取所有图片记录并查找最匹配的
+        if (!imageRecord || !imageRecord.fileToken) {
+          console.log(`尝试从飞书获取所有图片记录并查找最匹配的`);
           
-          // 尝试匹配UUID格式
-          const uuidMatches = imageUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-          if (uuidMatches && uuidMatches[0]) {
-            const potentialId = uuidMatches[0];
-            console.log(`从URL中提取到UUID格式的可能 ID: ${potentialId}`);
+          try {
+            // 从飞书获取所有图片记录
+            const { getImageRecords } = require("@/lib/feishu");
+            const allRecords = await getImageRecords();
             
-            const imageRecord = await getImageRecordById(potentialId);
-            if (imageRecord && imageRecord.fileToken) {
-              currentImageId = potentialId;
-              console.log(`UUID格式是有效ID: ${currentImageId}`);
-              parentId = imageRecord.parentId || currentImageId;
-              isUploadedImage = imageRecord.type === "uploaded";
+            if (allRecords && allRecords.length > 0) {
+              console.log(`成功从飞书获取到 ${allRecords.length} 条记录`);
+              
+              // 尝试查找最匹配的记录
+              // 1. 先尝试完全匹配
+              let matchedRecord = allRecords.find(record => 
+                record.id === currentImageId || 
+                record.id.includes(currentImageId) || 
+                currentImageId.includes(record.id)
+              );
+              
+              // 2. 如果没有完全匹配，尝试部分匹配
+              if (!matchedRecord) {
+                // 尝试匹配UUID部分
+                const uuidPart = currentImageId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+                if (uuidPart && uuidPart[0]) {
+                  matchedRecord = allRecords.find(record => 
+                    record.id.includes(uuidPart[0]) || 
+                    (record.fileToken && record.fileToken.includes(uuidPart[0]))
+                  );
+                }
+              }
+              
+              // 3. 如果还是没有匹配，尝试匹配最相似的记录
+              if (!matchedRecord) {
+                // 尝试匹配最相似的记录（基于ID的相似度）
+                let bestMatchScore = 0;
+                let bestMatch = null;
+                
+                for (const record of allRecords) {
+                  if (record.fileToken) {
+                    // 计算相似度分数
+                    let score = 0;
+                    const id1 = currentImageId.toLowerCase();
+                    const id2 = record.id.toLowerCase();
+                    
+                    // 计算共同字符数
+                    for (let i = 0; i < id1.length; i++) {
+                      if (id2.includes(id1[i])) score++;
+                    }
+                    
+                    // 如果分数超过当前最佳匹配，更新最佳匹配
+                    if (score > bestMatchScore) {
+                      bestMatchScore = score;
+                      bestMatch = record;
+                    }
+                  }
+                }
+                
+                // 如果最佳匹配分数超过阈值，使用该记录
+                if (bestMatchScore > 5 && bestMatch) {
+                  matchedRecord = bestMatch;
+                  console.log(`找到最佳匹配记录，分数: ${bestMatchScore}, ID: ${matchedRecord.id}`);
+                }
+              }
+              
+              // 如果找到了匹配的记录，使用该记录
+              if (matchedRecord && matchedRecord.fileToken) {
+                console.log(`找到匹配的记录: ${JSON.stringify(matchedRecord)}`);
+                imageRecord = matchedRecord;
+                currentImageId = matchedRecord.id;
+                parentId = matchedRecord.parentId || currentImageId;
+                isUploadedImage = matchedRecord.type === "uploaded";
+              }
             }
+          } catch (err) {
+            console.error(`获取所有图片记录时出错:`, err);
           }
         }
-      } catch (err) {
-        console.error("从飞书URL提取图片ID失败:", err);
-        return NextResponse.json({
-          success: false,
-          error: {
-            code: "FEISHU_URL_PARSE_ERROR",
-            message: "无法从飞书URL提取图片ID"
-          }
-        } as ApiResponse, { status: 400 });
-      }
-      
-      // 如果无法获取图片ID，返回错误
-      if (!currentImageId) {
-        return NextResponse.json({
-          success: false,
-          error: {
-            code: "MISSING_IMAGE_ID",
-            message: "无法从飞书URL获取图片ID"
-          }
-        } as ApiResponse, { status: 400 });
-      }
-      
-      // 验证图片ID是否有效（是否能获取到有效的fileToken）
-      const imageRecord = await getImageRecordById(currentImageId);
-      if (!imageRecord || !imageRecord.fileToken) {
-        console.error(`图片ID无效，无法获取fileToken: ${currentImageId}`);
-        return NextResponse.json({
-          success: false,
-          error: {
-            code: "INVALID_IMAGE_ID",
-            message: `无法获取图片记录或fileToken: ${currentImageId}`
-          }
-        } as ApiResponse, { status: 400 });
-      }
-    } else {
-      // 本地环境，使用原来的逻辑
-      currentImageId = await getImageIdFromUrl(imageUrl);
-      
-      // 检查当前图片的原始父ID
-      parentId = currentImageId; // 默认使用当前图片ID作为parentId
-      
-      // 获取该图片对应的所有元数据
-      try {
-        const metadataDir = path.join(process.cwd(), "data", "metadata");
-        const metadataPath = path.join(metadataDir, `${currentImageId}.json`);
-        const content = await fs.readFile(metadataPath, "utf8");
-        const imageMetadata = JSON.parse(content);
         
-        // 如果是上传图片，则使用当前图片ID作为根parentId
-        if (imageMetadata.type === "uploaded") {
-          parentId = currentImageId;
-          isUploadedImage = true;
-        } 
-        // 如果是生成图片且有rootParentId属性，则继续parentId
-        else if (imageMetadata.rootParentId) {
-          parentId = imageMetadata.rootParentId;
-        } 
-        // 如果有parentId则使用它
-        else if (imageMetadata.parentId) {
-          parentId = imageMetadata.parentId;
-        }
-      } catch (err) {
-        console.log("获取图片元数据失败，使用当前图片ID作为parentId:", err);
-      }
-      
-      try {
-        // 尝试获取原始图片的元数据
-        const metadataDir = path.join(process.cwd(), "data", "metadata");
-        const files = await fs.readdir(metadataDir);
-        
-        for (const file of files) {
-          if (file.endsWith(".json")) {
-            const metadataPath = path.join(metadataDir, file);
-            const content = await fs.readFile(metadataPath, "utf8");
-            const metadata = JSON.parse(content);
-            
-            // 检查URL是否匹配，以及是否为上传的图片
-            if (metadata.url === imageUrl && metadata.type === "uploaded") {
-              isUploadedImage = true;
-              break;
+        // 如果仍然无法获取有效的图片记录，返回错误
+        if (!imageRecord || !imageRecord.fileToken) {
+          console.error(`图片ID无效，无法获取fileToken: ${currentImageId}`);
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: "INVALID_IMAGE_ID",
+              message: `无法获取图片记录或fileToken: ${currentImageId}`
             }
-          }
+          } as ApiResponse, { status: 400 });
         }
-      } catch (err) {
-        console.error("查询上传图片元数据时出错:", err);
-        // 继续处理，不中断流程
-      }
-    }
-    
-    console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage, isVercelEnv: isVercelEnvironment });
-    
-    // 在Vercel环境中，使用飞书API直接获取图片数据
-    let imageData: string;
-    let mimeType: string;
+        
+        // 将验证后的图片记录保存到变量中，供后续使用
+        const validatedImageRecord = imageRecord;
+        
+        // 使用当前图片ID作为parentId
+        parentId = currentImageId;
+        isUploadedImage = false;
+        
+        console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage });
+        
+        // 使用飞书API直接获取图片数据
+        let imageData: string;
+        let mimeType: string;
     
     try {
-      if (isVercelEnvironment && imageUrl.includes('open.feishu.cn') && currentImageId) {
+      if (imageUrl.includes('open.feishu.cn') && currentImageId) {
         console.log(`在Vercel环境中使用飞书API获取图片数据, ID: ${currentImageId}`);
         
-        // 获取图片记录 - 这里不需要再次获取，因为我们已经在前面验证了记录的有效性
+        // 获取图片记录，如果前面没有定义validatedImageRecord，则重新获取
         const imageRecord = await getImageRecordById(currentImageId);
         
-        // 这里应该不会出现空记录，因为我们已经验证过了，但以防万一还是再次检查
+        // 验证图片记录的有效性
         if (!imageRecord || !imageRecord.fileToken) {
           throw new Error(`无法获取图片记录或fileToken: ${currentImageId}`);
         }
@@ -284,10 +312,17 @@ export async function POST(req: NextRequest) {
         imageData = buffer.toString('base64');
         mimeType = response.headers.get('content-type') || 'image/jpeg';
       } else {
-        // 使用原来的方式获取图片数据
-        const result = await fetchImageFromUrl(imageUrl);
-        imageData = result.data;
-        mimeType = result.mimeType;
+        // 如果不是飞书URL，直接从原始URL获取图片数据
+        const response = await fetch(imageUrl);
+        
+        if (!response.ok) {
+          throw new Error(`从原始URL获取图片数据失败: ${response.statusText}`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        imageData = buffer.toString('base64');
+        mimeType = response.headers.get('content-type') || 'image/jpeg';
       }
     } catch (error) {
       console.error('获取图片数据失败:', error);
@@ -361,9 +396,11 @@ export async function POST(req: NextRequest) {
     }
     const response = result.response;
 
-    let textResponse = null;
-    let generatedImageData = null;
+    // 初始化变量
+    let textResponse: string | null = null;
+    let generatedImageData: string | null = null;
     let responseMimeType = "image/png";
+    metadata = null;
 
     // Process the response
     if (response && response.candidates && response.candidates.length > 0 && 
@@ -393,20 +430,20 @@ export async function POST(req: NextRequest) {
     }
 
     // 将parentId传递给saveImage函数以及isUploadedImage标记
-    const metadata = await saveImage(
+    metadata = await saveImage(
       generatedImageData,
       prompt,
       responseMimeType,
       { 
         isUploadedImage,
         rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
-        isVercelEnv: isVercelEnvironment  // 传递Vercel环境标志
+        isVercelEnv: true  // 传递Vercel环境标志
       },  
       currentImageId  // 传递当前图片ID作为直接父ID
     );
     
-    // 如果有parentId，保存编辑历史
-    if (parentId) {
+    // 如果有parentId和metadata，保存编辑历史
+    if (parentId && metadata && metadata.id) {
       try {
         // 记录编辑历史
         console.log(`保存编辑历史记录: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
@@ -423,32 +460,67 @@ export async function POST(req: NextRequest) {
           })
         });
         
-        const historyResult = await historyResponse.json();
-        console.log('编辑历史记录保存结果:', historyResult);
+        // 增加错误处理，防止JSON解析错误
+        if (historyResponse.ok) {
+          try {
+            const responseText = await historyResponse.text();
+            if (responseText && responseText.trim()) {
+              try {
+                const historyResult = JSON.parse(responseText);
+                console.log('编辑历史记录保存结果:', historyResult);
+              } catch (parseError) {
+                console.error('解析编辑历史响应JSON失败:', parseError, '原始响应:', responseText);
+              }
+            } else {
+              console.warn('编辑历史API返回空响应');
+            }
+          } catch (textError) {
+            console.error('获取编辑历史响应文本失败:', textError);
+          }
+        } else {
+          console.error('编辑历史API返回错误状态:', historyResponse.status, historyResponse.statusText);
+        }
       } catch (historyError) {
         // 记录错误但不中断主流程
         console.error('保存编辑历史记录失败:', historyError);
       }
     }
 
-    // Return the image URL, description, and metadata as JSON
-    return NextResponse.json({
+    // 定义响应变量
+    let responseData = {
       success: true,
       data: {
-        imageUrl: isVercelEnvironment ? metadata.feishuUrl : metadata.url,  // 在Vercel环境中返回飞书URL
-        description: textResponse,
-        metadata,
-        isVercelEnv: isVercelEnvironment  // 返回Vercel环境标志
+        imageUrl: metadata?.feishuUrl ? metadata.feishuUrl : metadata?.url || '',
+        description: textResponse || null,
+        metadata: metadata || {},
+        isVercelEnv: true  // 返回Vercel环境标志
       }
-    } as ApiResponse);
+    } as ApiResponse;
+    
+    // Return the image URL, description, and metadata as JSON
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Error editing image:", error);
+    
+    // 检查是否是JSON解析错误
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Unexpected end of JSON input') || errorMessage.includes('JSON')) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "JSON_PARSE_ERROR",
+          message: "响应数据解析错误，请重试",
+          details: errorMessage
+        }
+      } as ApiResponse, { status: 400 });
+    }
+    
     return NextResponse.json({
       success: false,
       error: {
         code: "EDIT_FAILED",
         message: "Failed to edit image",
-        details: error instanceof Error ? error.message : String(error)
+        details: errorMessage
       }
     } as ApiResponse, { status: 500 });
   }
