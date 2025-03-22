@@ -270,16 +270,16 @@ export async function saveImageRecord(imageData: {
       throw new Error('缺少必要的环境变量: APP_TOKEN 或 TABLE_ID');
     }
     
-    // 构建记录字段
+    // 构建记录字段 - 所有字段都转换为字符串以兼容飞书表格中的文本字段
     const fields = {
-      id: imageData.id,
-      fileToken: imageData.fileToken,
-      url: imageData.url,
-      prompt: imageData.prompt || '未提供提示词',
-      timestamp: imageData.timestamp,
-      parentId: imageData.parentId || '',
-      rootParentId: imageData.rootParentId || '',
-      type: imageData.type || 'generated' // 添加type字段
+      id: String(imageData.id),
+      fileToken: String(imageData.fileToken),
+      url: String(imageData.url),
+      prompt: String(imageData.prompt || '未提供提示词'),
+      timestamp: String(imageData.timestamp), // 将数字转换为字符串
+      parentId: String(imageData.parentId || ''),
+      rootParentId: String(imageData.rootParentId || ''),
+      type: String(imageData.type || 'generated')
     };
     
     console.log(`saveImageRecord: 已构建记录字段，准备发送请求`);
