@@ -367,7 +367,14 @@ export async function getImageRecordById(imageId: string) {
       }
     );
     
-    if (response.data.code === 0 && response.data.data.items.length > 0) {
+    // 增加更多的安全检查
+    if (response.data && 
+        response.data.code === 0 && 
+        response.data.data && 
+        response.data.data.items && 
+        Array.isArray(response.data.data.items) && 
+        response.data.data.items.length > 0) {
+      
       const item = response.data.data.items[0];
       const fields = item.fields || {};
       
@@ -408,7 +415,9 @@ export async function getImageRecordById(imageId: string) {
         type: fields.type || 'generated'
       };
     } else {
-      console.log(`getImageRecordById: 未找到图片记录，ID: ${imageId}`);
+      // 增加更详细的日志，帮助调试
+      console.log(`getImageRecordById: 未找到图片记录或响应格式不正确，ID: ${imageId}`);
+      console.log('响应数据:', JSON.stringify(response.data || {}));
       return null;
     }
   } catch (error) {
