@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
       mimeType,
       size: buffer.byteLength,
       type: "uploaded", // 标记为用户上传的图片
-      isVercelEnv: isVercelEnvironment
+      isVercelEnv: isVercelEnvironment,
+      // 确保parentId和rootParentId不为空，使用图片自身id
+      parentId: id,
+      rootParentId: id
     };
     
     // 转换为Base64用于上传到飞书
@@ -77,7 +80,9 @@ export async function POST(request: NextRequest) {
         fileToken: fileInfo.fileToken,
         prompt,
         timestamp: new Date().getTime(),
-        parentId: undefined
+        parentId: metadata.parentId,
+        rootParentId: metadata.rootParentId,
+        type: metadata.type
       });
       
       console.log('记录已保存到飞书多维表格，ID:', recordInfo.record_id);
