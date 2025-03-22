@@ -103,6 +103,12 @@ export async function saveImage(
       mimeType
     );
     
+    // 检查上传是否发生错误
+    if (fileInfo.error) {
+      console.error(`saveImage: 上传图片到飞书失败: ${fileInfo.errorMessage}`);
+      throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
+    }
+    
     console.log(`saveImage: 图片已上传到飞书，URL: ${fileInfo.url}`);
     
     // 保存记录到飞书多维表格
@@ -116,6 +122,12 @@ export async function saveImage(
       rootParentId: metadata.rootParentId, // 传递rootParentId
       type: metadata.type // 传递图片类型字段
     });
+    
+    // 检查保存记录是否成功
+    if (recordInfo.error) {
+      console.error(`saveImage: 保存记录到飞书失败: ${recordInfo.errorMessage}`);
+      throw new Error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
+    }
     
     console.log(`saveImage: 记录已保存到飞书多维表格，record_id: ${recordInfo.record_id}`);
     

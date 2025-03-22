@@ -469,17 +469,29 @@ export async function POST(req: NextRequest) {
     }
 
     // 将parentId传递给saveImage函数以及isUploadedImage标记
-    metadata = await saveImage(
-      generatedImageData,
-      prompt,
-      responseMimeType,
-      { 
-        isUploadedImage,
-        rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
-        isVercelEnv: true  // 传递Vercel环境标志
-      },  
-      currentImageId  // 传递当前图片ID作为直接父ID
-    );
+    try {
+      metadata = await saveImage(
+        generatedImageData,
+        prompt,
+        responseMimeType,
+        { 
+          isUploadedImage,
+          rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
+          isVercelEnv: true  // 传递Vercel环境标志
+        },  
+        currentImageId  // 传递当前图片ID作为直接父ID
+      );
+    } catch (saveError) {
+      console.error(`保存图片时发生错误:`, saveError);
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "IMAGE_SAVE_ERROR",
+          message: "保存生成的图片时发生错误",
+          details: saveError instanceof Error ? saveError.message : String(saveError)
+        }
+      } as ApiResponse, { status: 500 });
+    }
     
     // 如果有parentId和metadata，保存编辑历史
     if (parentId && metadata && metadata.id) {

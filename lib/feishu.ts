@@ -84,17 +84,34 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
     console.log(`uploadImageToFeishu: 已准备FormData，准备调用API: ${BASE_URL}/im/v1/images`);
     
     // 添加超时设置
-    const response = await axios.post(
-      `${BASE_URL}/im/v1/images`,
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(),
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 30000 // 设置30秒超时
+    console.log(`uploadImageToFeishu: 发送请求到飞书API，开始时间: ${new Date().toISOString()}`);
+    let response;
+    try {
+      response = await axios.post(
+        `${BASE_URL}/im/v1/images`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            'Authorization': `Bearer ${token}`
+          },
+          timeout: 30000, // 设置30秒超时
+          maxContentLength: Infinity,  // 允许大文件上传
+          maxBodyLength: Infinity      // 允许大请求体
+        }
+      );
+      console.log(`uploadImageToFeishu: 请求成功返回，结束时间: ${new Date().toISOString()}`);
+    } catch (uploadError) {
+      console.error(`uploadImageToFeishu: 请求失败，错误类型: ${uploadError.name}`);
+      console.error(`uploadImageToFeishu: 错误消息: ${uploadError.message}`);
+      
+      if (uploadError.response) {
+        console.error(`uploadImageToFeishu: 服务器响应: ${uploadError.response.status} ${uploadError.response.statusText}`);
+        console.error(`uploadImageToFeishu: 响应数据:`, uploadError.response.data);
       }
-    );
+      
+      throw uploadError; // 重新抛出错误以便上层捕获
+    }
     
     console.log(`uploadImageToFeishu: 收到飞书上传响应，状态码: ${response.status}, 数据代码: ${response.data.code}`);
     
@@ -261,8 +278,13 @@ export async function saveImageRecord(imageData: {
       console.error(`saveImageRecord: 错误详情: ${error.message}`);
     }
     
-    // 出错时返回默认值，而不是抛出异常
-    return { id: imageData.id, record_id: 'error' };
+    // 返回带有错误标记的对象，便于上层调用方检测错误
+    return { 
+      id: imageData.id, 
+      record_id: 'error',
+      error: true,
+      errorMessage: error instanceof Error ? error.message : '保存图片记录失败' 
+    };
   }
 }
 
