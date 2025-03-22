@@ -313,10 +313,16 @@ export async function POST(req: NextRequest) {
       const { imageData, mimeType, imageRecord } = await fetchImageFromFeishu(currentImageId);
       
       // 设置父ID和类型
-      parentId = currentImageId;
+      parentId = imageRecord.id || currentImageId; 
       isUploadedImage = imageRecord.type === "uploaded";
       
-      console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage });
+      console.log("图片类型检查:", { 
+        imageUrl, 
+        currentImageId, 
+        "系统内部ID": imageRecord.id,
+        parentId, 
+        isUploadedImage 
+      });
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);
@@ -352,10 +358,10 @@ export async function POST(req: NextRequest) {
           responseMimeType,
           { 
             isUploadedImage,
-            rootParentId: parentId,  // 增加rootParentId继承，确保编辑链不断裂
-            isVercelEnv: true  // 传递Vercel环境标志
+            rootParentId: parentId,  
+            isVercelEnv: true  
           },  
-          currentImageId  // 传递当前图片ID作为直接父ID
+          currentImageId  
         );
       } catch (saveError) {
         console.error(`保存图片时发生错误:`, saveError);
@@ -372,7 +378,6 @@ export async function POST(req: NextRequest) {
       // 如果有parentId和metadata，保存编辑历史
       if (parentId && metadata && metadata.id) {
         try {
-          // 记录编辑历史关联
           console.log(`设置编辑历史关联: 源图片ID ${parentId}, 编辑结果ID ${metadata.id}`);
         } catch (historyError) {
           console.error(`记录编辑历史时发生错误:`, historyError);
