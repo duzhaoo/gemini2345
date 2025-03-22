@@ -38,6 +38,17 @@ export function ImagesWithHistory() {
   const [imageGroups, setImageGroups] = useState<ImageGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isVercelEnv, setIsVercelEnv] = useState(false);
+
+  // 检测是否在Vercel环境中
+  useEffect(() => {
+    // 检查是否在客户端
+    if (typeof window !== 'undefined') {
+      // 检查是否在Vercel环境中
+      const isVercel = window.location.hostname.includes('vercel.app');
+      setIsVercelEnv(isVercel);
+    }
+  }, []);
 
   // 数据统计状态已移除
 
@@ -286,7 +297,27 @@ export function ImagesWithHistory() {
     }
   };
 
-
+  const getImageSrc = (url: string, isVercelEnv: boolean) => {
+    // 检查是否是飞书URL
+    const isFeishuUrl = url.includes('open.feishu.cn');
+    
+    // 检查是否是本地URL
+    const isLocalUrl = url.startsWith('/');
+    
+    // 在Vercel环境中，本地URL无法工作
+    if (isVercelEnv && isLocalUrl) {
+      console.error('在Vercel环境中检测到本地URL，这无法正常工作:', url);
+      return '/placeholder-image.svg';
+    }
+    
+    // 如果是飞书URL，始终使用代理
+    if (isFeishuUrl) {
+      return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+    
+    // 其他情况直接返回URL
+    return url;
+  };
 
   if (isLoading) {
     return <div className="text-center py-8">正在加载图片历史记录...</div>;
@@ -594,12 +625,11 @@ export function ImagesWithHistory() {
                             <div className="w-full max-w-[250px]">
                               <div className="relative aspect-square overflow-hidden rounded-md">
                                 <img 
-                                  src={item.content.startsWith('https://open.feishu.cn') 
-                                    ? `/api/image-proxy?url=${encodeURIComponent(item.content)}` 
-                                    : item.content}
+                                  src={getImageSrc(item.content, isVercelEnv)}
                                   alt="生成图片"
                                   className="w-full h-full object-cover"
                                   onError={(e) => {
+                                    console.error('图片加载失败:', item.content);
                                     e.currentTarget.src = '/placeholder-image.svg';
                                   }}
                                 />
