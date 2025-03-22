@@ -466,8 +466,21 @@ export async function getImageRecords() {
  * @param {string} imageId - 图片ID或fileToken
  * @returns {Promise<any>} 图片记录
  */
-export async function getImageRecordById(imageId: string) {
+// 创建查询缓存来减少重复调用
+// 缓存键为图片ID，值为曾经获取的记录
+// 注意：缓存在当前session有效，并不会持久保存
+// 如果您有很大量的图片，请注意内存占用
+// 可以将此缓存选项采用非全局缓存的方法，以减少内存使用
+const imageRecordCache = new Map();
+
+export async function getImageRecordById(imageId: string, skipCache = false) {
   try {
+    // 先检查缓存
+    if (!skipCache && imageRecordCache.has(imageId)) {
+      console.log(`getImageRecordById: 使用缓存的图片记录，ID: ${imageId}`);
+      return imageRecordCache.get(imageId);
+    }
+    
     console.log(`getImageRecordById: 开始获取图片记录，ID或fileToken: ${imageId}`);
     const token = await getAccessToken();
     
@@ -537,7 +550,7 @@ export async function getImageRecordById(imageId: string) {
             }
             
             // 返回找到的记录 - 确保字段值都是字符串
-            return {
+            const record = {
               id: String(fields.id || item.record_id || 'unknown'),
               url: String(fields.url || ''),
               fileToken: String(fileToken),
@@ -547,6 +560,12 @@ export async function getImageRecordById(imageId: string) {
               rootParentId: String(fields.rootParentId || ''),
               type: String(fields.type || 'generated')
             };
+            
+            // 将记录保存到缓存中
+            imageRecordCache.set(imageId, record);
+            imageRecordCache.set(fileToken, record); // 同时缓存fileToken和ID的映射
+            
+            return record;
           }
         }
       }
