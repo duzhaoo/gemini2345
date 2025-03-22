@@ -375,13 +375,28 @@ export async function POST(req: NextRequest) {
           currentImageId  
         );
       } catch (saveError) {
-        console.error(`保存图片时发生错误:`, saveError);
+        console.error("编辑图片API - 保存编辑后的图片失败:", saveError);
+        
+        // 对错误进行分类处理，给用户更明确的提示
+        let errorCode = "SAVE_ERROR";
+        let errorMessage = "保存编辑后的图片失败";
+        
+        if (saveError.message) {
+          if (saveError.message.includes("上传图片到飞书失败")) {
+            errorCode = "FEISHU_UPLOAD_ERROR";
+            errorMessage = "上传到飞书服务器失败，请稍后重试";
+          } else if (saveError.message.includes("保存记录到飞书失败")) {
+            errorCode = "FEISHU_RECORD_ERROR";
+            errorMessage = "保存记录到飞书数据库失败，请稍后重试";
+          }
+        }
+        
         return NextResponse.json({
           success: false,
           error: {
-            code: "IMAGE_SAVE_ERROR",
-            message: "保存生成的图片时发生错误",
-            details: saveError instanceof Error ? saveError.message : String(saveError)
+            code: errorCode,
+            message: errorMessage,
+            details: saveError.message
           }
         } as ApiResponse, { status: 500 });
       }
