@@ -129,6 +129,12 @@ export async function saveImage(
       throw new Error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
     }
     
+    // 检查record_id是否为'error'，这表示保存失败
+    if (recordInfo.record_id === 'error') {
+      console.error(`saveImage: 保存记录到飞书失败，但未提供具体错误信息`);
+      throw new Error(`保存记录到飞书失败，但未提供具体错误信息`);
+    }
+    
     console.log(`saveImage: 记录已保存到飞书多维表格，record_id: ${recordInfo.record_id}`);
     
     // 更新元数据，包含飞书信息
