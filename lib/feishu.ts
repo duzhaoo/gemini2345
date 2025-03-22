@@ -107,64 +107,94 @@ export async function uploadImageToFeishu(imageData: string, fileName: string, m
       
       if (uploadError.response) {
         console.error(`uploadImageToFeishu: 服务器响应: ${uploadError.response.status} ${uploadError.response.statusText}`);
-        console.error(`uploadImageToFeishu: 响应数据:`, uploadError.response.data);
+        
+        // 检查响应格式，安全处理可能的非JSON响应
+        try {
+          if (typeof uploadError.response.data === 'string') {
+            console.error(`uploadImageToFeishu: 响应数据(字符串): ${uploadError.response.data.substring(0, 200)}...`);
+          } else {
+            console.error(`uploadImageToFeishu: 响应数据:`, uploadError.response.data);
+          }
+        } catch (logError) {
+          console.error(`uploadImageToFeishu: 无法记录响应数据: ${logError.message}`);
+        }
       }
       
       throw uploadError; // 重新抛出错误以便上层捕获
     }
     
-    console.log(`uploadImageToFeishu: 收到飞书上传响应，状态码: ${response.status}, 数据代码: ${response.data.code}`);
+    // 确保响应数据是有效的JSON格式
+    try {
+      console.log(`uploadImageToFeishu: 收到飞书上传响应，状态码: ${response.status}`);
+      
+      // 检查响应是否为字符串，如果是则尝试解析为JSON
+      if (typeof response.data === 'string') {
+        try {
+          response.data = JSON.parse(response.data);
+          console.log(`uploadImageToFeishu: 成功将字符串响应解析为JSON`);
+        } catch (parseError) {
+          console.error(`uploadImageToFeishu: 无法将响应解析为JSON: ${parseError.message}`);
+          console.error(`uploadImageToFeishu: 原始响应: ${response.data.substring(0, 200)}...`);
+          throw new Error(`飞书API返回了非JSON格式的响应: ${response.data.substring(0, 100)}...`);
+        }
+      }
+      
+      console.log(`uploadImageToFeishu: 飞书上传响应代码: ${response.data.code}`);
     
-    if (response.data.code === 0) {
-      const imageKey = response.data.data.image_key;
-      const url = `${BASE_URL}/im/v1/images/${imageKey}`;
+      if (response.data.code === 0) {
+        const imageKey = response.data.data.image_key;
+        const url = `${BASE_URL}/im/v1/images/${imageKey}`;
+        
+        console.log(`uploadImageToFeishu: 图片上传成功! image_key: ${imageKey}`);
+        console.log(`uploadImageToFeishu: 完整URL: ${url}`);
+        console.log("======= 飞书图片上传完成 =======");
+        
+        return {
+          fileToken: imageKey,
+          url: url,
+          name: fileName
+        };
+      } else {
+        console.error(`uploadImageToFeishu: 上传失败! 错误码: ${response.data.code}, 消息: ${response.data.msg}`);
+        throw new Error(`上传图片失败，响应: ${JSON.stringify(response.data)}`);
+      }
+    } catch (error) {
+      // 增强错误日志
+      console.error('======= 飞书图片上传错误 =======');
+      console.error(`uploadImageToFeishu: 上传图片到飞书出错，类型: ${error?.name}，消息: ${error?.message}`);
       
-      console.log(`uploadImageToFeishu: 图片上传成功! image_key: ${imageKey}`);
-      console.log(`uploadImageToFeishu: 完整URL: ${url}`);
-      console.log("======= 飞书图片上传完成 =======");
+      if (error.response) {
+        console.error('uploadImageToFeishu: 收到错误响应:', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          headers: error.response.headers,
+          data: error.response.data
+        });
+      } else if (error.request) {
+        console.error('uploadImageToFeishu: 已发送请求但未收到响应:', {
+          method: error.request.method,
+          path: error.request.path,
+          host: error.request.host
+        });
+      } else {
+        console.error(`uploadImageToFeishu: 发送请求前出错: ${error.message}`);
+        console.error(`uploadImageToFeishu: 错误堆栈: ${error.stack}`);
+      }
       
+      // 重要：修改为返回带有错误标记的对象，而不是模拟成功响应
+      // 这样可以更容易地追踪问题
+      console.error("uploadImageToFeishu: 返回错误标记，图片上传失败");
       return {
-        fileToken: imageKey,
-        url: url,
-        name: fileName
+        fileToken: `error-${Date.now()}`,
+        url: `/generated-images/${fileName}`, // 使用本地路径作为备份
+        name: fileName,
+        error: true,
+        errorMessage: error?.message || '未知错误'
       };
-    } else {
-      console.error(`uploadImageToFeishu: 上传失败! 错误码: ${response.data.code}, 消息: ${response.data.msg}`);
-      throw new Error(`上传图片失败，响应: ${JSON.stringify(response.data)}`);
     }
   } catch (error: any) {
-    // 增强错误日志
-    console.error('======= 飞书图片上传错误 =======');
-    console.error(`uploadImageToFeishu: 上传图片到飞书出错，类型: ${error?.name}，消息: ${error?.message}`);
-    
-    if (error.response) {
-      console.error('uploadImageToFeishu: 收到错误响应:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        headers: error.response.headers,
-        data: error.response.data
-      });
-    } else if (error.request) {
-      console.error('uploadImageToFeishu: 已发送请求但未收到响应:', {
-        method: error.request.method,
-        path: error.request.path,
-        host: error.request.host
-      });
-    } else {
-      console.error(`uploadImageToFeishu: 发送请求前出错: ${error.message}`);
-      console.error(`uploadImageToFeishu: 错误堆栈: ${error.stack}`);
-    }
-    
-    // 重要：修改为返回带有错误标记的对象，而不是模拟成功响应
-    // 这样可以更容易地追踪问题
-    console.error("uploadImageToFeishu: 返回错误标记，图片上传失败");
-    return {
-      fileToken: `error-${Date.now()}`,
-      url: `/generated-images/${fileName}`, // 使用本地路径作为备份
-      name: fileName,
-      error: true,
-      errorMessage: error?.message || '未知错误'
-    };
+    console.error('uploadImageToFeishu: 上传图片到飞书出错:', error);
+    throw error;
   }
 }
 
