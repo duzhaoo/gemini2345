@@ -151,6 +151,7 @@ export async function fetchImageFromUrl(url: string): Promise<{ data: string; mi
   try {
     // 检测是否在Vercel环境中
     const isVercelEnvironment = process.env.VERCEL === '1';
+    console.log(`fetchImageFromUrl: 开始获取图片，URL: ${url}, 环境: ${isVercelEnvironment ? 'Vercel' : '本地'}`);
     
     // Handle local URLs (from our own server)
     if (url.startsWith('/')) {
@@ -158,10 +159,80 @@ export async function fetchImageFromUrl(url: string): Promise<{ data: string; mi
       if (isVercelEnvironment) {
         console.log('在Vercel环境中，本地URL可能无效，尝试从飞书获取图片');
         
-        // 如果是本地生成的图片URL，我们可能需要从飞书获取
-        // 这里需要实现一个从飞书获取图片的逻辑
-        // 但由于我们没有实现这个逻辑，所以直接抛出错误
-        throw new Error(`在Vercel环境中无法访问本地文件: ${url}`);
+        // 尝试从本地URL中提取图片ID
+        try {
+          const pathParts = url.split('/');
+          const filename = pathParts[pathParts.length - 1];
+          const imageId = filename.split('.')[0]; // 假设文件名格式是 id.extension
+          
+          console.log(`尝试从本地URL提取图片ID: ${imageId}`);
+          
+          // 尝试使用飞书API获取图片
+          const { getImageRecordById } = require('./feishu');
+          const imageRecord = await getImageRecordById(imageId);
+          
+          if (imageRecord && imageRecord.fileToken) {
+            console.log(`成功从飞书获取图片记录: ${JSON.stringify(imageRecord)}`);
+            
+            // 使用飞书URL获取图片数据
+            const feishuUrl = `https://open.feishu.cn/open-apis/im/v1/images/${imageRecord.fileToken}`;
+            // 获取访问令牌
+            const { getAccessToken } = require('./feishu');
+            const token = await getAccessToken();
+            
+            const response = await fetch(feishuUrl, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`从飞书获取图片失败: ${response.statusText}`);
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Data = buffer.toString('base64');
+            const mimeType = response.headers.get('content-type') || 'image/jpeg';
+            
+            return {
+              data: base64Data,
+              mimeType
+            };
+          }
+        } catch (err) {
+          console.error('从飞书获取图片失败:', err);
+        }
+        
+        // 如果从飞书获取失败，尝试使用外部URL
+        // 尝试使用BASE_URL构建完整URL
+        if (process.env.BASE_URL) {
+          const fullUrl = `${process.env.BASE_URL}${url}`;
+          console.log(`尝试使用完整URL获取图片: ${fullUrl}`);
+          
+          try {
+            const response = await fetch(fullUrl);
+            
+            if (!response.ok) {
+              throw new Error(`获取图片失败: ${response.statusText}`);
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Data = buffer.toString('base64');
+            const mimeType = response.headers.get('content-type') || 'image/jpeg';
+            
+            return {
+              data: base64Data,
+              mimeType
+            };
+          } catch (err) {
+            console.error('使用完整URL获取图片失败:', err);
+          }
+        }
+        
+        // 如果所有尝试都失败，抛出错误
+        throw new Error(`在Vercel环境中无法获取本地图片: ${url}`);
       }
       
       const publicDir = path.join(process.cwd(), 'public');

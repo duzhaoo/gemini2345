@@ -4,7 +4,7 @@ import { ApiResponse } from "@/lib/types";
 import { saveImage, fetchImageFromUrl, getImageIdFromUrl, initDirectories } from "@/lib/server-utils";
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getImageRecordById } from "@/lib/feishu";
+import { getImageRecordById, getAccessToken } from "@/lib/feishu";
 
 // Initialize the Google Gen AI client with your API key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -54,17 +54,39 @@ export async function POST(req: NextRequest) {
     let isUploadedImage = false;
     
     if (isVercelEnvironment) {
-      // 在Vercel环境中，尝试从URL中提取图片ID
-      if (imageUrl.includes('open.feishu.cn')) {
-        // 从飞书URL中提取图片ID
-        try {
-          // 尝试从飞书获取图片记录
-          // 假设URL格式为 https://open.feishu.cn/...?id=xxx 或者包含在某个路径中
-          const urlObj = new URL(imageUrl);
-          const idFromQuery = urlObj.searchParams.get('id');
+      // 在Vercel环境中，必须使用飞书URL，不能使用本地URL
+      if (!imageUrl.includes('open.feishu.cn')) {
+        return NextResponse.json({
+          success: false,
+          error: {
+            code: "INVALID_URL_IN_VERCEL",
+            message: "在Vercel环境中只能使用飞书URL"
+          }
+        } as ApiResponse, { status: 400 });
+      }
+      
+      // 从飞书URL中提取图片ID
+      try {
+        // 尝试从飞书获取图片记录
+        // 假设 URL格式为 https://open.feishu.cn/...?id=xxx 或者包含在某个路径中
+        const urlObj = new URL(imageUrl);
+        const idFromQuery = urlObj.searchParams.get('id');
+        
+        if (idFromQuery) {
+          currentImageId = idFromQuery;
           
-          if (idFromQuery) {
-            currentImageId = idFromQuery;
+          // 从飞书获取图片记录
+          const imageRecord = await getImageRecordById(currentImageId);
+          if (imageRecord) {
+            parentId = imageRecord.parentId || currentImageId;
+            isUploadedImage = imageRecord.type === "uploaded";
+          }
+        } else {
+          // 如果URL中没有ID参数，尝试从路径中提取
+          const pathParts = urlObj.pathname.split('/');
+          const potentialId = pathParts[pathParts.length - 1];
+          if (potentialId && potentialId.length > 8) {
+            currentImageId = potentialId;
             
             // 从飞书获取图片记录
             const imageRecord = await getImageRecordById(currentImageId);
@@ -72,31 +94,28 @@ export async function POST(req: NextRequest) {
               parentId = imageRecord.parentId || currentImageId;
               isUploadedImage = imageRecord.type === "uploaded";
             }
-          } else {
-            // 如果URL中没有ID参数，尝试从路径中提取
-            const pathParts = urlObj.pathname.split('/');
-            const potentialId = pathParts[pathParts.length - 1];
-            if (potentialId && potentialId.length > 8) {
-              currentImageId = potentialId;
-              
-              // 从飞书获取图片记录
-              const imageRecord = await getImageRecordById(currentImageId);
-              if (imageRecord) {
-                parentId = imageRecord.parentId || currentImageId;
-                isUploadedImage = imageRecord.type === "uploaded";
-              }
-            }
           }
-        } catch (err) {
-          console.error("从飞书URL提取图片ID失败:", err);
-          // 继续处理，使用默认值
         }
+      } catch (err) {
+        console.error("从飞书URL提取图片ID失败:", err);
+        return NextResponse.json({
+          success: false,
+          error: {
+            code: "FEISHU_URL_PARSE_ERROR",
+            message: "无法从飞书URL提取图片ID"
+          }
+        } as ApiResponse, { status: 400 });
       }
       
-      // 如果无法从URL中提取ID，生成一个随机ID
+      // 如果无法获取图片ID，返回错误
       if (!currentImageId) {
-        currentImageId = `img-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        parentId = currentImageId;
+        return NextResponse.json({
+          success: false,
+          error: {
+            code: "MISSING_IMAGE_ID",
+            message: "无法从飞书URL获取图片ID"
+          }
+        } as ApiResponse, { status: 400 });
       }
     } else {
       // 本地环境，使用原来的逻辑
@@ -154,9 +173,57 @@ export async function POST(req: NextRequest) {
     }
     
     console.log("图片类型检查:", { imageUrl, currentImageId, parentId, isUploadedImage, isVercelEnv: isVercelEnvironment });
-
-    // Fetch image data from URL
-    const { data: imageData, mimeType } = await fetchImageFromUrl(imageUrl);
+    
+    // 在Vercel环境中，使用飞书API直接获取图片数据
+    let imageData: string;
+    let mimeType: string;
+    
+    try {
+      if (isVercelEnvironment && imageUrl.includes('open.feishu.cn') && currentImageId) {
+        console.log(`在Vercel环境中使用飞书API获取图片数据, ID: ${currentImageId}`);
+        
+        // 获取图片记录
+        const imageRecord = await getImageRecordById(currentImageId);
+        
+        if (!imageRecord || !imageRecord.fileToken) {
+          throw new Error(`无法获取图片记录或fileToken: ${currentImageId}`);
+        }
+        
+        // 获取访问令牌
+        const token = await getAccessToken();
+        
+        // 使用飞书API直接获取图片数据
+        const feishuUrl = `https://open.feishu.cn/open-apis/im/v1/images/${imageRecord.fileToken}`;
+        const response = await fetch(feishuUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`从飞书获取图片数据失败: ${response.statusText}`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        imageData = buffer.toString('base64');
+        mimeType = response.headers.get('content-type') || 'image/jpeg';
+      } else {
+        // 使用原来的方式获取图片数据
+        const result = await fetchImageFromUrl(imageUrl);
+        imageData = result.data;
+        mimeType = result.mimeType;
+      }
+    } catch (error) {
+      console.error('获取图片数据失败:', error);
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "IMAGE_FETCH_FAILED",
+          message: `获取图片数据失败: ${error instanceof Error ? error.message : '未知错误'}`
+        }
+      } as ApiResponse, { status: 400 });
+    }
 
     // Get the model with the correct configuration
     const model = genAI.getGenerativeModel({
