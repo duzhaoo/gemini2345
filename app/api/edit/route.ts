@@ -323,16 +323,18 @@ export async function POST(req: NextRequest) {
         } as ApiResponse, { status: 400 });
       }
       
-      // 设置父ID和类型，只使用系统内部ID
-      parentId = imageRecord.id;
+      // 设置父ID和类型，只使用系统内部ID，避免使用fileToken作为ID
+      parentId = imageRecord.id; // 确保使用系统内部ID，而不是fileToken
       isUploadedImage = imageRecord.type === "uploaded";
       
+      // 记录详细的ID信息，用于调试
       console.log("图片类型检查:", { 
         imageUrl, 
-        currentImageId, 
-        "系统内部ID": imageRecord.id,
-        parentId, 
-        isUploadedImage 
+        currentImageId, // 这是从URL提取的，可能是fileToken
+        "系统内部ID": imageRecord.id, // 这是数据库中的实际ID
+        parentId, // 父ID一定是系统内部ID
+        isUploadedImage,
+        "fileToken": imageRecord.fileToken || currentImageId
       });
       
       // 调用Gemini API编辑图片
@@ -363,16 +365,23 @@ export async function POST(req: NextRequest) {
       
       // 保存生成的图片
       try {
+        // 确保使用获取到的系统内部ID作为parentId，而不是从URL中提取的fileToken
+        console.log("开始保存编辑后的图片，使用系统内部ID作为parentId:", {
+          "系统内部ID": imageRecord.id,
+          "当前使用的parentId": parentId,
+          "URL中提取的ID": currentImageId
+        });
+        
         metadata = await saveImage(
           generatedImageData,
           prompt,
           responseMimeType,
           { 
             isUploadedImage,
-            rootParentId: parentId,  
+            rootParentId: imageRecord.rootParentId || parentId,  // 优先使用原记录的rootParentId
             isVercelEnv: true  
           },  
-          currentImageId  
+          parentId  // 此处直接使用系统内部ID，避免使用fileToken
         );
       } catch (saveError) {
         console.error("编辑图片API - 保存编辑后的图片失败:", saveError);

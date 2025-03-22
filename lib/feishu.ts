@@ -255,8 +255,39 @@ export async function saveImageRecord(metadata: {
         // 处理API返回的错误
         const errorCode = response.data.code || -1;
         const errorMsg = response.data.msg || '未知API错误';
+        
+        // 特殊检查：如果code为0且msg为success，这实际上是成功响应
+        if (errorCode === 0 && errorMsg === 'success' && response.data.data && response.data.data.record) {
+          const recordId = response.data.data.record.record_id || response.data.data.record.id;
+          console.log(`saveImageRecord: 成功保存记录到飞书(特殊处理)，记录ID: ${recordId}`);
+          console.log("======= 保存图片记录到飞书完成 =======");
+          
+          return {
+            record_id: recordId
+          };
+        }
+        
         console.error(`saveImageRecord: 飞书API错误，代码: ${errorCode}, 消息: ${errorMsg}`);
         console.error(`saveImageRecord: 详细响应:`, JSON.stringify(response.data));
+        
+        // 特殊处理：当出现TextFieldConvFail错误但数据已成功保存的情况时，返回成功状态但带警告信息
+        if (errorCode === 1254060 && errorMsg === 'TextFieldConvFail') {
+          console.log(`saveImageRecord: 检测到TextFieldConvFail错误，但数据可能已成功保存`);
+          
+          // 尝试获取记录ID
+          if (response.data && response.data.data && response.data.data.record_id) {
+            const recordId = response.data.data.record_id;
+            console.log(`saveImageRecord: 虽有类型转换错误，但记录已保存，ID: ${recordId}`);
+            console.log("======= 保存图片记录到飞书完成（带警告）=======");
+            
+            // 返回成功，但添加警告
+            return {
+              record_id: recordId,
+              warning: true,
+              warningMessage: `飞书API警告: ${errorCode} - ${errorMsg}，但记录已保存`
+            };
+          }
+        }
         
         return {
           record_id: 'error',

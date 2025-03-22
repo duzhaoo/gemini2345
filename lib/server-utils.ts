@@ -118,6 +118,12 @@ export async function saveImage(
       throw new Error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
     }
     
+    // 如果有警告但不是错误，记录警告信息但继续处理
+    if (recordInfo.warning) {
+      console.warn(`saveImage: 保存记录到飞书成功但有警告: ${recordInfo.warningMessage}`);
+      // 不抛出错误，允许继续处理
+    }
+    
     // 检查record_id是否为'error'，这表示保存失败
     if (recordInfo.record_id === 'error') {
       console.error(`saveImage: 保存记录到飞书失败，但未提供具体错误信息`);
