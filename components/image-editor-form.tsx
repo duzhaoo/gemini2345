@@ -337,7 +337,7 @@ export function ImageEditorForm({
                       ) : (
                         <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
                           <ImageIcon className="h-10 w-10 mb-2" />
-                          <p>点击选择图像或拖放图片到此处</p>
+                          <p className="text-xl font-medium">选择图片</p>
                         </div>
                       )}
                     </div>
@@ -351,8 +351,8 @@ export function ImageEditorForm({
                       className="hidden"
                     />
                     
-                    {/* 图片URL输入 */}
-                    <div className="flex gap-2">
+                    {/* 隐藏图片URL输入 */}
+                    <div className="hidden">
                       <Input
                         type="text"
                         placeholder="或输入图片URL..."
@@ -368,22 +368,26 @@ export function ImageEditorForm({
                         disabled={isLoading || step === 'execute'}
                         className="flex-1"
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={handleSelectFileClick}
-                        disabled={isLoading || step === 'execute'}
-                      >
-                        <Upload className="h-4 w-4" />
-                      </Button>
                     </div>
+                    
+                    {/* 添加大的上传按钮 */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={handleSelectFileClick}
+                      disabled={isLoading || step === 'execute'}
+                      className="w-full mt-2"
+                    >
+                      <Upload className="h-5 w-5 mr-2" />
+                      上传图片
+                    </Button>
                   </div>
                 </>
               )}
             </div>
-            {/* 步骤指示器 */}
-            <div className="flex items-center justify-between mt-4 mb-2">
+            {/* 隐藏步骤指示器 */}
+            <div className="hidden">
               <div className="flex items-center">
                 <div className={`rounded-full w-6 h-6 flex items-center justify-center ${step === 'prepare' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                   1
