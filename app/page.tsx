@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ImageGeneratorForm } from "@/components/image-generator-form";
 import { ImageEditorForm } from "@/components/image-editor-form";
-import { ImageDisplay } from "@/components/image-display";
+// ImageDisplay组件已删除
 import { ImagesWithHistory } from "@/components/images-with-history";
 
 export default function Home() {
@@ -42,30 +42,25 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        <div>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="generate">生成图像</TabsTrigger>
-              <TabsTrigger value="edit">编辑图像</TabsTrigger>
-            </TabsList>
-            <TabsContent value="generate">
-              <ImageGeneratorForm 
-                onImageGenerated={handleImageGenerated} 
-              />
-            </TabsContent>
-            <TabsContent value="edit">
-              <ImageEditorForm 
-                onImageEdited={handleImageEdited} 
-                initialImageUrl={currentImageUrl || ""}
-                readOnlyUrl={!!currentImageUrl}
-              />
-            </TabsContent>
-          </Tabs>
-        </div>
-        <div>
-          <ImageDisplay imageUrl={currentImageUrl} isVercelEnv={isVercelEnv} />
-        </div>
+      <div className="w-full max-w-3xl mx-auto mb-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="generate">生成图像</TabsTrigger>
+            <TabsTrigger value="edit">编辑图像</TabsTrigger>
+          </TabsList>
+          <TabsContent value="generate">
+            <ImageGeneratorForm 
+              onImageGenerated={handleImageGenerated} 
+            />
+          </TabsContent>
+          <TabsContent value="edit">
+            <ImageEditorForm 
+              onImageEdited={handleImageEdited} 
+              initialImageUrl={currentImageUrl || ""}
+              readOnlyUrl={!!currentImageUrl}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
 
 
