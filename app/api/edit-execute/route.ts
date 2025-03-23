@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
 import { saveImage } from "@/lib/server-utils";
-import { getAccessToken } from "@/lib/feishu";
+import { getAccessToken, saveImageRecord } from "@/lib/feishu";
+import { v4 as uuidv4 } from 'uuid';
 
 // 初始化Gemini API客户端
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -178,6 +179,110 @@ function parseGeminiResponse(response: any): {
   return { imageData, mimeType, textResponse };
 }
 
+/**
+ * 将图片上传到飞书并返回 URL
+ */
+async function uploadImageToFeishu(
+  imageData: string,
+  prompt: string,
+  mimeType: string,
+  parentId?: string
+): Promise<{ uploadedImageUrl: string; imageId: string }> {
+  console.log("开始上传图片到飞书");
+  
+  // 生成唯一ID
+  const imageId = uuidv4();
+  
+  // 获取访问令牌
+  const token = await getAccessToken();
+  
+  // 准备文件名和数据
+  const fileName = `${imageId}.png`;
+  const base64Data = imageData;
+  
+  // 将base64转换为Buffer
+  const imageBuffer = Buffer.from(base64Data, 'base64');
+  
+  // 准备FormData
+  const formData = new FormData();
+  const blob = new Blob([imageBuffer], { type: mimeType });
+  formData.append('image_type', 'message');
+  formData.append('image', blob, fileName);
+  
+  // 调用飞书API上传图片
+  const uploadUrl = 'https://open.feishu.cn/open-apis/im/v1/images';
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    body: formData
+  });
+  
+  if (!uploadResponse.ok) {
+    throw new Error(`上传图片到飞书失败: ${uploadResponse.statusText}`);
+  }
+  
+  const uploadResult = await uploadResponse.json();
+  
+  if (!uploadResult.data || !uploadResult.data.image_key) {
+    throw new Error('上传图片到飞书失败: 未返回图片密钥');
+  }
+  
+  const fileToken = uploadResult.data.image_key;
+  const uploadedImageUrl = `https://open.feishu.cn/open-apis/im/v1/images/${fileToken}`;
+  
+  console.log(`图片上传成功, URL: ${uploadedImageUrl}`);
+  
+  return { uploadedImageUrl, imageId };
+}
+
+/**
+ * 异步保存图片记录到飞书多维表格
+ */
+async function saveImageRecordAsync(
+  imageId: string,
+  imageUrl: string,
+  prompt: string,
+  mimeType: string,
+  options: {
+    isUploadedImage?: boolean;
+    rootParentId?: string;
+    isVercelEnv?: boolean;
+  },
+  parentId?: string
+): Promise<void> {
+  // 使用Promise.resolve().then()确保这是异步非阻塞的
+  Promise.resolve().then(async () => {
+    try {
+      console.log(`开始异步保存图片记录, ID: ${imageId}`);
+      
+      // 从图片URL提取fileToken
+      const fileToken = imageUrl.split('/').pop() || '';
+      
+      // 准备记录数据
+      const recordData = {
+        id: imageId,
+        url: imageUrl,
+        fileToken: fileToken,
+        prompt: prompt,
+        timestamp: Date.now().toString(),
+        parentId: parentId || '',
+        rootParentId: options.rootParentId || parentId || '',
+        type: options.isUploadedImage ? 'uploaded' : 'generated'
+      };
+      
+      // 调用保存记录函数
+      await saveImageRecord(recordData);
+      
+      console.log(`图片记录异步保存成功, ID: ${imageId}`);
+    } catch (error) {
+      // 仅记录错误，不影响API响应
+      console.error(`异步保存图片记录失败:`, error);
+    }
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     // 解析请求数据
@@ -238,8 +343,18 @@ export async function POST(req: NextRequest) {
       try {
         console.log("开始保存编辑后的图片");
         
-        const metadata = await saveImage(
+        // 将上传到飞书的部分分离出来
+        const { uploadedImageUrl, imageId } = await uploadImageToFeishu(
           generatedImageData,
+          prompt,
+          responseMimeType,
+          prepareId
+        );
+        
+        // 异步保存记录到飞书多维表格，不阻塞API响应
+        saveImageRecordAsync(
+          imageId,
+          uploadedImageUrl,
           prompt,
           responseMimeType,
           { 
@@ -250,12 +365,12 @@ export async function POST(req: NextRequest) {
           prepareId  // 使用准备阶段的ID作为父ID
         );
         
-        // 返回成功响应
+        // 立即返回成功响应，不等待记录保存完成
         return NextResponse.json({
           success: true,
           data: {
-            imageUrl: metadata.feishuUrl || metadata.url,
-            id: metadata.id || "",
+            imageUrl: uploadedImageUrl,
+            id: imageId,
             prompt: prompt,
             textResponse: textResponse || ""
           }
