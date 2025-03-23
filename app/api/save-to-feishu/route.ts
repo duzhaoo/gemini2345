@@ -67,22 +67,16 @@ export async function POST(req: NextRequest) {
       // 保存记录到飞书多维表格
       console.log("开始保存记录到飞书多维表格...");
       
-      // 构建要保存的完整元数据
+      // 构建要保存的元数据，确保与飞书多维表格字段一致
       const metadata = {
         id,
         url: fileInfo.url,
         fileToken: fileInfo.fileToken,
         prompt: prompt || "编辑的图片",
-        timestamp: new Date().getTime(),
-        parentId: prepareId,
-        rootParentId: rootParentId || prepareId,
-        type: isUploadedImage === true ? "uploaded" : "generated",
-        // 添加额外元数据（如果有）
-        ...additionalMetadata,
-        // 添加图片尺寸信息（如果需要可以从原始图片数据提取）
-        imageSize: additionalMetadata.imageSize || '',
-        // 添加编辑时间
-        editedAt: new Date().toISOString()
+        timestamp: String(new Date().getTime()),  // 确保timestamp是字符串类型
+        parentId: id,  // 使用图片自身的id作为parentId
+        rootParentId: id,  // 使用图片自身的id作为rootParentId
+        type: isUploadedImage === true ? "uploaded" : "generated"
       };
       
       const recordInfo = await saveImageRecord(metadata);
@@ -92,28 +86,17 @@ export async function POST(req: NextRequest) {
         // 即使保存记录失败，我们仍然返回成功，因为图片已经上传成功
         return NextResponse.json({
           success: true,
-          data: {
-            imageUrl: fileInfo.url,
-            id: id,
-            warning: `保存记录到飞书失败: ${recordInfo.errorMessage}`
-          }
+          message: "图片已上传到飞书，但保存记录失败",
+          warning: recordInfo.errorMessage
         } as ApiResponse);
       }
       
       console.log(`记录已保存到飞书，record_id: ${recordInfo.record_id}`);
       
-      // 返回成功响应
+      // 返回简单的成功响应
       return NextResponse.json({
         success: true,
-        data: {
-          imageUrl: fileInfo.url,
-          id: id,
-          recordId: recordInfo.record_id,
-          fileToken: fileInfo.fileToken,
-          savedAt: new Date().toISOString(),
-          // 返回完整的元数据信息
-          metadata: metadata
-        }
+        message: "图片已成功保存到飞书"
       } as ApiResponse);
       
     } catch (error: any) {
