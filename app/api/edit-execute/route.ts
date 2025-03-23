@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
 import { saveImage } from "@/lib/server-utils";
-import { getAccessToken, saveImageRecord } from "@/lib/feishu";
-import { v4 as uuidv4 } from 'uuid';
+import { getAccessToken, uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
+import crypto from 'crypto';
 
 // 初始化Gemini API客户端
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -179,108 +179,38 @@ function parseGeminiResponse(response: any): {
   return { imageData, mimeType, textResponse };
 }
 
-/**
- * 将图片上传到飞书并返回 URL
- */
-async function uploadImageToFeishu(
-  imageData: string,
-  prompt: string,
-  mimeType: string,
-  parentId?: string
-): Promise<{ uploadedImageUrl: string; imageId: string }> {
-  console.log("开始上传图片到飞书");
-  
-  // 生成唯一ID
-  const imageId = uuidv4();
-  
-  // 获取访问令牌
-  const token = await getAccessToken();
-  
-  // 准备文件名和数据
-  const fileName = `${imageId}.png`;
-  const base64Data = imageData;
-  
-  // 将base64转换为Buffer
-  const imageBuffer = Buffer.from(base64Data, 'base64');
-  
-  // 准备FormData
-  const formData = new FormData();
-  const blob = new Blob([imageBuffer], { type: mimeType });
-  formData.append('image_type', 'message');
-  formData.append('image', blob, fileName);
-  
-  // 调用飞书API上传图片
-  const uploadUrl = 'https://open.feishu.cn/open-apis/im/v1/images';
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    },
-    body: formData
-  });
-  
-  if (!uploadResponse.ok) {
-    throw new Error(`上传图片到飞书失败: ${uploadResponse.statusText}`);
-  }
-  
-  const uploadResult = await uploadResponse.json();
-  
-  if (!uploadResult.data || !uploadResult.data.image_key) {
-    throw new Error('上传图片到飞书失败: 未返回图片密钥');
-  }
-  
-  const fileToken = uploadResult.data.image_key;
-  const uploadedImageUrl = `https://open.feishu.cn/open-apis/im/v1/images/${fileToken}`;
-  
-  console.log(`图片上传成功, URL: ${uploadedImageUrl}`);
-  
-  return { uploadedImageUrl, imageId };
-}
-
-/**
- * 异步保存图片记录到飞书多维表格
- */
-async function saveImageRecordAsync(
-  imageId: string,
-  imageUrl: string,
-  prompt: string,
-  mimeType: string,
-  options: {
-    isUploadedImage?: boolean;
-    rootParentId?: string;
-    isVercelEnv?: boolean;
-  },
-  parentId?: string
-): Promise<void> {
-  // 使用Promise.resolve().then()确保这是异步非阻塞的
-  Promise.resolve().then(async () => {
-    try {
-      console.log(`开始异步保存图片记录, ID: ${imageId}`);
-      
-      // 从图片URL提取fileToken
-      const fileToken = imageUrl.split('/').pop() || '';
-      
-      // 准备记录数据
-      const recordData = {
-        id: imageId,
-        url: imageUrl,
-        fileToken: fileToken,
-        prompt: prompt,
-        timestamp: Date.now().toString(),
-        parentId: parentId || '',
-        rootParentId: options.rootParentId || parentId || '',
-        type: options.isUploadedImage ? 'uploaded' : 'generated'
-      };
-      
-      // 调用保存记录函数
-      await saveImageRecord(recordData);
-      
-      console.log(`图片记录异步保存成功, ID: ${imageId}`);
-    } catch (error) {
-      // 仅记录错误，不影响API响应
-      console.error(`异步保存图片记录失败:`, error);
+// 异步保存记录到飞书多维表格，不阻塞主流程
+async function saveImageRecordAsync(metadata: {
+  id: string;
+  url: string;
+  fileToken: string;
+  prompt: string;
+  timestamp: number;
+  parentId?: string;
+  rootParentId?: string;
+  type?: string;
+}) {
+  try {
+    console.log(`======= 后台异步保存图片记录开始 =======`);
+    console.log(`准备异步保存记录到飞书多维表格，ID: ${metadata.id}`);
+    
+    const recordInfo = await saveImageRecord(metadata);
+    
+    if (recordInfo.error) {
+      console.error(`异步保存记录失败: ${recordInfo.errorMessage}`);
+      return;
     }
-  });
+    
+    if (recordInfo.warning) {
+      console.warn(`异步保存记录成功但有警告: ${recordInfo.warningMessage}`);
+    }
+    
+    console.log(`异步保存记录成功，record_id: ${recordInfo.record_id}`);
+    console.log(`======= 后台异步保存图片记录完成 =======`);
+  } catch (error) {
+    console.error(`异步保存记录出错:`, error);
+    // 这里不抛出错误，因为这是后台任务
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -339,37 +269,49 @@ export async function POST(req: NextRequest) {
         } as ApiResponse, { status: 500 });
       }
       
-      // 保存生成的图片
+      // 快速保存图片并返回URL (只上传图片，不保存记录)
       try {
-        console.log("开始保存编辑后的图片");
+        console.log("开始快速保存编辑后的图片");
         
-        // 将上传到飞书的部分分离出来
-        const { uploadedImageUrl, imageId } = await uploadImageToFeishu(
+        // 生成唯一ID
+        const id = crypto.randomUUID();
+        const extension = responseMimeType.split('/')[1] || 'png';
+        const filename = `${id}.${extension}`;
+        
+        // 上传图片到飞书 (这一步是必须的，因为需要获取URL)
+        console.log("上传编辑后的图片到飞书...");
+        const fileInfo = await uploadImageToFeishu(
           generatedImageData,
-          prompt,
-          responseMimeType,
-          prepareId
+          filename,
+          responseMimeType
         );
         
-        // 异步保存记录到飞书多维表格，不阻塞API响应
-        saveImageRecordAsync(
-          imageId,
-          uploadedImageUrl,
-          prompt,
-          responseMimeType,
-          { 
-            isUploadedImage: isUploadedImage === true,
-            rootParentId: rootParentId || prepareId,
-            isVercelEnv: true  
-          },  
-          prepareId  // 使用准备阶段的ID作为父ID
-        );
+        if (fileInfo.error) {
+          throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
+        }
         
-        // 立即返回成功响应，不等待记录保存完成
+        // 立即返回成功响应，包含图片URL
+        const imageUrl = fileInfo.url;
+        const imageId = id;
+        
+        // 在后台异步保存记录到飞书多维表格
+        // 注意：这里不使用await，让它在后台运行
+        saveImageRecordAsync({
+          id: imageId,
+          url: imageUrl,
+          fileToken: fileInfo.fileToken,
+          prompt,
+          timestamp: new Date().getTime(),
+          parentId: prepareId,
+          rootParentId: rootParentId || prepareId,
+          type: isUploadedImage === true ? "uploaded" : "generated"
+        });
+        
+        // 返回成功响应
         return NextResponse.json({
           success: true,
           data: {
-            imageUrl: uploadedImageUrl,
+            imageUrl: imageUrl,
             id: imageId,
             prompt: prompt,
             textResponse: textResponse || ""
