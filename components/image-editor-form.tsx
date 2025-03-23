@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import Image from "next/image";
-import { Upload, ImageIcon, Loader2 } from "lucide-react";
+import { Upload, ImageIcon, Loader2, Save, CheckCircle } from "lucide-react";
+import { uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
+import crypto from 'crypto';
 
 interface ImageEditorFormProps {
   onImageEdited?: (imageUrl: string) => void;
@@ -39,6 +41,21 @@ export function ImageEditorForm({
     isUploadedImage: boolean;
     originalUrl: string;
   } | null>(null);
+  
+  // 编辑后的图片数据
+  const [editedImageData, setEditedImageData] = useState<{
+    imageData: string;
+    mimeType: string;
+    id: string;
+    fileToken: string;
+    prepareId: string;
+    rootParentId?: string;
+    isUploadedImage: boolean;
+  } | null>(null);
+  
+  // 保存到飞书状态
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   // Update imageUrl when initialImageUrl changes
   useEffect(() => {
@@ -158,6 +175,8 @@ export function ImageEditorForm({
     
     setIsLoading(true);
     setError(null);
+    setIsSaved(false); // 重置保存状态
+    setEditedImageData(null); // 清除之前的编辑数据
     
     try {
       // 调用执行API
@@ -186,19 +205,106 @@ export function ImageEditorForm({
         }
       }
       
-      // 编辑成功，调用回调函数
-      if (onImageEdited && executeData.data?.imageUrl) {
-        onImageEdited(executeData.data.imageUrl);
+      // 保存编辑后的图片数据
+      if (executeData.data?.imageData) {
+        // 设置编辑后的图片数据
+        setEditedImageData({
+          imageData: executeData.data.imageData,
+          mimeType: executeData.data.mimeType,
+          id: executeData.data.id,
+          fileToken: executeData.data.fileToken,
+          prepareId: executeData.data.prepareId,
+          rootParentId: executeData.data.rootParentId,
+          isUploadedImage: executeData.data.isUploadedImage
+        });
+        
+        // 创建base64 URL用于预览
+        const dataUrl = `data:${executeData.data.mimeType};base64,${executeData.data.imageData}`;
+        setPreviewUrl(dataUrl);
+        
+        // 如果有回调函数，调用它
+        if (onImageEdited) {
+          onImageEdited(dataUrl);
+        }
+      } else {
+        throw new Error("未能获取编辑后的图片数据");
       }
-      
-      // 重置为准备状态，以便用户可以继续编辑
-      setStep('prepare');
-      setPrepareData(null);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "执行过程中发生错误");
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // 保存到飞书
+  const handleSaveToFeishu = async () => {
+    if (!editedImageData) {
+      setError("没有可保存的图片数据");
+      return;
+    }
+    
+    setIsSaving(true);
+    setError(null);
+    
+    try {
+      // 生成唯一ID
+      const id = crypto.randomUUID();
+      const extension = editedImageData.mimeType.split('/')[1] || 'png';
+      const filename = `${id}.${extension}`;
+      
+      console.log("开始上传图片到飞书...");
+      
+      // 直接调用上传图片到飞书函数
+      const fileInfo = await uploadImageToFeishu(
+        editedImageData.imageData,
+        filename,
+        editedImageData.mimeType
+      );
+      
+      if (fileInfo.error) {
+        throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
+      }
+      
+      console.log(`图片已上传到飞书，URL: ${fileInfo.url}`);
+      
+      // 构建要保存的元数据
+      const metadata = {
+        id,
+        url: fileInfo.url,
+        fileToken: fileInfo.fileToken,
+        prompt: prompt || "编辑的图片",
+        timestamp: new Date().getTime(),
+        parentId: editedImageData.prepareId,
+        rootParentId: editedImageData.rootParentId || editedImageData.prepareId,
+        type: editedImageData.isUploadedImage === true ? "uploaded" : "generated",
+        editedAt: new Date().toISOString()
+      };
+      
+      // 直接调用保存记录函数
+      console.log("开始保存记录到飞书多维表格...");
+      const recordInfo = await saveImageRecord(metadata);
+      
+      if (recordInfo.error) {
+        console.error(`保存记录到飞书失败: ${recordInfo.errorMessage}`);
+        // 即使保存记录失败，我们仍然继续，因为图片已经上传成功
+        setError(`图片已上传但保存记录失败: ${recordInfo.errorMessage}`);
+      } else {
+        console.log(`记录已保存到飞书，record_id: ${recordInfo.record_id}`);
+      }
+      
+      // 标记为已保存
+      setIsSaved(true);
+      
+      // 如果有URL和回调函数，更新URL
+      if (fileInfo.url && onImageEdited) {
+        onImageEdited(fileInfo.url);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存到飞书过程中发生错误");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -342,7 +448,7 @@ export function ImageEditorForm({
             )}
           </div>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-2">
           {step === 'prepare' ? (
             <Button 
               type="button" 
@@ -358,19 +464,49 @@ export function ImageEditorForm({
               ) : "准备编辑"}
             </Button>
           ) : (
-            <Button 
-              type="button" 
-              onClick={handleExecute} 
-              disabled={isLoading || !prompt.trim() || !prepareData} 
-              className="w-full"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  编辑中...
-                </>
-              ) : "执行编辑"}
-            </Button>
+            <>
+              <Button 
+                type="button" 
+                onClick={handleExecute} 
+                disabled={isLoading || !prompt.trim() || !prepareData} 
+                className="w-full"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    编辑中...
+                  </>
+                ) : "执行编辑"}
+              </Button>
+              
+              {/* 保存到飞书按钮 */}
+              {editedImageData && (
+                <Button 
+                  type="button" 
+                  onClick={handleSaveToFeishu} 
+                  disabled={isSaving || isSaved}
+                  variant={isSaved ? "outline" : "secondary"}
+                  className="w-full"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      保存中...
+                    </>
+                  ) : isSaved ? (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      已保存到飞书
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      保存到飞书
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
           )}
         </CardFooter>
     </Card>

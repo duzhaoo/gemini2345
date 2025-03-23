@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
-import { saveImage } from "@/lib/server-utils";
-import { getAccessToken, uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
+import { getAccessToken } from "@/lib/feishu";
 import crypto from 'crypto';
 
 // 初始化Gemini API客户端
@@ -179,39 +178,7 @@ function parseGeminiResponse(response: any): {
   return { imageData, mimeType, textResponse };
 }
 
-// 异步保存记录到飞书多维表格，不阻塞主流程
-async function saveImageRecordAsync(metadata: {
-  id: string;
-  url: string;
-  fileToken: string;
-  prompt: string;
-  timestamp: number;
-  parentId?: string;
-  rootParentId?: string;
-  type?: string;
-}) {
-  try {
-    console.log(`======= 后台异步保存图片记录开始 =======`);
-    console.log(`准备异步保存记录到飞书多维表格，ID: ${metadata.id}`);
-    
-    const recordInfo = await saveImageRecord(metadata);
-    
-    if (recordInfo.error) {
-      console.error(`异步保存记录失败: ${recordInfo.errorMessage}`);
-      return;
-    }
-    
-    if (recordInfo.warning) {
-      console.warn(`异步保存记录成功但有警告: ${recordInfo.warningMessage}`);
-    }
-    
-    console.log(`异步保存记录成功，record_id: ${recordInfo.record_id}`);
-    console.log(`======= 后台异步保存图片记录完成 =======`);
-  } catch (error) {
-    console.error(`异步保存记录出错:`, error);
-    // 这里不抛出错误，因为这是后台任务
-  }
-}
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -269,51 +236,25 @@ export async function POST(req: NextRequest) {
         } as ApiResponse, { status: 500 });
       }
       
-      // 快速保存图片并返回URL (只上传图片，不保存记录)
+      // 直接返回base64图片数据，不保存到飞书
       try {
-        console.log("开始快速保存编辑后的图片");
+        console.log("直接返回编辑后的图片数据");
         
         // 生成唯一ID
         const id = crypto.randomUUID();
-        const extension = responseMimeType.split('/')[1] || 'png';
-        const filename = `${id}.${extension}`;
         
-        // 上传图片到飞书 (这一步是必须的，因为需要获取URL)
-        console.log("上传编辑后的图片到飞书...");
-        const fileInfo = await uploadImageToFeishu(
-          generatedImageData,
-          filename,
-          responseMimeType
-        );
-        
-        if (fileInfo.error) {
-          throw new Error(`上传图片到飞书失败: ${fileInfo.errorMessage}`);
-        }
-        
-        // 立即返回成功响应，包含图片URL
-        const imageUrl = fileInfo.url;
-        const imageId = id;
-        
-        // 在后台异步保存记录到飞书多维表格
-        // 注意：这里不使用await，让它在后台运行
-        saveImageRecordAsync({
-          id: imageId,
-          url: imageUrl,
-          fileToken: fileInfo.fileToken,
-          prompt,
-          timestamp: new Date().getTime(),
-          parentId: prepareId,
-          rootParentId: rootParentId || prepareId,
-          type: isUploadedImage === true ? "uploaded" : "generated"
-        });
-        
-        // 返回成功响应
+        // 返回成功响应，包含base64图片数据
         return NextResponse.json({
           success: true,
           data: {
-            imageUrl: imageUrl,
-            id: imageId,
+            imageData: generatedImageData,  // 直接返回base64图片数据
+            mimeType: responseMimeType,     // 返回图片MIME类型
+            id: id,
             prompt: prompt,
+            fileToken: fileToken,           // 返回原始图片的fileToken
+            prepareId: prepareId,           // 返回准备ID
+            rootParentId: rootParentId || prepareId,
+            isUploadedImage: isUploadedImage === true,
             textResponse: textResponse || ""
           }
         } as ApiResponse);
