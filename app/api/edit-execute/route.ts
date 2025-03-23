@@ -73,7 +73,12 @@ async function callGeminiApi(prompt: string, imageData: string, mimeType: string
   
   // 优化提示词格式以避免文字出现在图片中
   const enhancedPrompt = `请根据以下描述生成一张图片：${prompt}。
-`;
+
+要求：
+- 请不要在图片中添加任何文字
+- 只生成纯粹的图像内容而没有文字叠加
+- 图片只包含相关视觉元素，不包含文字
+- 请不要将指令作为图片内容的一部分`;
   
   console.log(`优化后的提示词： ${enhancedPrompt}`);
 
