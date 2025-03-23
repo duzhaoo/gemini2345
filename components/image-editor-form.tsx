@@ -51,6 +51,10 @@ export function ImageEditorForm({
     isUploadedImage: boolean;
   } | null>(null);
   
+  // 原始图片和编辑后的图片URL
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+  const [editedImageUrl, setEditedImageUrl] = useState<string | null>(null);
+  
   // 保存到飞书状态
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -150,6 +154,8 @@ export function ImageEditorForm({
       
       // 保存准备数据并进入下一步
       setPrepareData(prepareData.data);
+      // 保存原始图片URL
+      setOriginalImageUrl(previewUrl);
       setStep('execute');
       
     } catch (err) {
@@ -218,7 +224,8 @@ export function ImageEditorForm({
         
         // 创建base64 URL用于预览
         const dataUrl = `data:${executeData.data.mimeType};base64,${executeData.data.imageData}`;
-        setPreviewUrl(dataUrl);
+        // 设置编辑后的图片URL，而不是更新预览URL
+        setEditedImageUrl(dataUrl);
         
         // 如果有回调函数，调用它
         if (onImageEdited) {
@@ -339,17 +346,29 @@ export function ImageEditorForm({
                 <>
                   <Label>选择图像</Label>
                   <div className="grid gap-2">
-                    {/* 图片预览区域 */}
+                    {/* 图片预览区域 - 始终显示原始图片 */}
                     <div 
                       className="relative aspect-video w-full overflow-hidden rounded-md border border-dashed flex items-center justify-center"
                       onClick={handleSelectFileClick}
                     >
-                      {previewUrl ? (
+                      {originalImageUrl ? (
+                        <img
+                          src={originalImageUrl.startsWith('https://open.feishu.cn') 
+                            ? `/api/image-proxy?url=${encodeURIComponent(originalImageUrl)}` 
+                            : originalImageUrl}
+                          alt="原始图像" 
+                          className="absolute inset-0 w-full h-full object-contain"
+                          onError={(e) => {
+                            console.error('图片加载失败:', originalImageUrl);
+                            e.currentTarget.src = '/placeholder-image.svg';
+                          }}
+                        />
+                      ) : previewUrl ? (
                         <img
                           src={previewUrl.startsWith('https://open.feishu.cn') 
                             ? `/api/image-proxy?url=${encodeURIComponent(previewUrl)}` 
                             : previewUrl}
-                          alt="要编辑的图像" 
+                          alt="原始图像" 
                           className="absolute inset-0 w-full h-full object-contain"
                           onError={(e) => {
                             console.error('图片加载失败:', previewUrl);
@@ -427,6 +446,52 @@ export function ImageEditorForm({
               />
             </div>
             
+            {/* 编辑后的图片显示区域 */}
+            {editedImageUrl && (
+              <div className="flex flex-col space-y-2 mt-4">
+                <Label>编辑后的图片</Label>
+                <div className="relative aspect-video w-full overflow-hidden rounded-md border">
+                  <img 
+                    src={editedImageUrl} 
+                    alt="编辑后的图像"
+                    className="absolute inset-0 w-full h-full object-contain"
+                    onError={(e) => {
+                      console.error('图片加载失败:', editedImageUrl);
+                      e.currentTarget.src = '/placeholder-image.svg';
+                    }}
+                  />
+                </div>
+                
+                {/* 保存到飞书按钮 */}
+                {editedImageData && (
+                  <Button 
+                    type="button" 
+                    onClick={handleSaveToFeishu} 
+                    disabled={isSaving || isSaved}
+                    variant={isSaved ? "outline" : "secondary"}
+                    className="w-full mt-2"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        保存中...
+                      </>
+                    ) : isSaved ? (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        已保存
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        保存图片
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            )}
+            
             {error && (
               <div className="text-sm text-red-500 rounded p-2 bg-red-50 border border-red-200">
                 <p className="font-semibold">错误：</p>
@@ -449,9 +514,9 @@ export function ImageEditorForm({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  准备中...
+                  上传中...
                 </>
-              ) : "准备编辑"}
+              ) : "上传图片"}
             </Button>
           ) : (
             <>
@@ -468,34 +533,6 @@ export function ImageEditorForm({
                   </>
                 ) : "执行编辑"}
               </Button>
-              
-              {/* 保存到飞书按钮 */}
-              {editedImageData && (
-                <Button 
-                  type="button" 
-                  onClick={handleSaveToFeishu} 
-                  disabled={isSaving || isSaved}
-                  variant={isSaved ? "outline" : "secondary"}
-                  className="w-full"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      保存中...
-                    </>
-                  ) : isSaved ? (
-                    <>
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      已保存
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      保存图片
-                    </>
-                  )}
-                </Button>
-              )}
             </>
           )}
         </CardFooter>
