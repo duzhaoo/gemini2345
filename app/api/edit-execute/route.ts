@@ -71,9 +71,15 @@ async function callGeminiApi(prompt: string, imageData: string, mimeType: string
     },
   });
   
+  // 优化提示词格式以避免文字出现在图片中
+  const enhancedPrompt = `请根据以下描述生成一张图片：${prompt}。
+`;
+  
+  console.log(`优化后的提示词： ${enhancedPrompt}`);
+
   // 准备消息内容
   const messageParts = [
-    { text: prompt },
+    { text: enhancedPrompt },
     {
       inlineData: {
         data: imageData,

@@ -239,19 +239,29 @@ export function ImageEditorForm({
   const downloadImage = () => {
     if (!editedImageData) return;
     
-    // 创建一个链接元素
-    const link = document.createElement('a');
-    link.href = editedImageData.imageData;
-    
-    // 生成文件名，使用当前时间戳
-    const timestamp = new Date().getTime();
-    const extension = editedImageData.mimeType.split('/')[1] || 'png';
-    link.download = `gemini-edited-${timestamp}.${extension}`;
-    
-    // 模拟点击事件触发下载
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      // 创建正确的data URL
+      const dataUrl = `data:${editedImageData.mimeType};base64,${editedImageData.imageData}`;
+      
+      // 创建一个链接元素
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      
+      // 生成文件名，使用当前时间戳
+      const timestamp = new Date().getTime();
+      const extension = editedImageData.mimeType.split('/')[1] || 'png';
+      link.download = `gemini-edited-${timestamp}.${extension}`;
+      
+      // 模拟点击事件触发下载
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('图片下载成功');
+    } catch (error) {
+      console.error('下载图片时出错:', error);
+      setError('下载图片失败，请重试');
+    }
   };
   
   // 保存到飞书
