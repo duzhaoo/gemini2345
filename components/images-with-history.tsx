@@ -45,20 +45,28 @@ export function ImagesWithHistory() {
   // 获取图片历史记录
   const fetchImagesWithHistory = async () => {
     setIsLoading(true);
+    setError(null);
     
     try {
-      // 强制防止浏览器缓存导致的问题
+      // 使用更严格的缓存破坏机制
+      const randomId = Math.random().toString(36).substring(2, 15);
       const timestamp = Date.now();
 
-      const response = await fetch(`/api/images-with-history?_t=${timestamp}`, {
-        // 添加禁用缓存的headers
+      console.log(`开始获取图片历史 - 随机参数: ${randomId}, 时间戟: ${timestamp}`);
+
+      const response = await fetch(`/api/images-with-history?_t=${timestamp}&_r=${randomId}`, {
+        // 使用原生 fetch 选项强制设置禁用缓存
+        method: 'GET',
         headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
           'Pragma': 'no-cache',
-          'Expires': '0'
+          'Expires': '0',
+          'X-Random': randomId
         },
-        // 确保每次都发送新请求
-        cache: 'no-store'
+        cache: 'no-store',
+        // 添加其他与缓存相关的选项
+        credentials: 'same-origin',
+        redirect: 'follow'
       });
       const data = await response.json();
 

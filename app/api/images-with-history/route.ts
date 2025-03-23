@@ -22,6 +22,11 @@ interface ImageGroup {
 
 // 获取所有图片及其编辑历史
 export async function GET(req: NextRequest) {
+  // 打印所有请求信息，用于调试
+  console.log('\n\n=== 接收到图片广场请求 ===');
+  console.log('请求URL:', req.url);
+  console.log('请求头部:', Object.fromEntries(req.headers.entries()));
+  console.log('\n\n');
   try {
     // 统计日志
     console.log('\n\n=============================================');
@@ -570,20 +575,37 @@ export async function GET(req: NextRequest) {
       ...stats
     };
     
+    // 生成随机标识符，用于确保每次返回的响应都不同
+    const randomToken = crypto.randomUUID();
+    const currentTime = new Date().toISOString();
+    
     const response = NextResponse.json({
       success: true,
       data: {
         imageGroups: result,
         total: result.length,
-        stats: enhancedStats
+        stats: enhancedStats,
+        // 添加元数据信息，确保响应内容不同
+        _metadata: {
+          timestamp: Date.now(),
+          requestId: randomToken,
+          generatedAt: currentTime
+        }
       }
     } as ApiResponse);
     
-    // 添加禁止缓存的响应头
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    // 添加全面禁止缓存的响应头
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
     response.headers.set('Surrogate-Control', 'no-store');
+    response.headers.set('Vary', '*');
+    response.headers.set('ETag', randomToken); // 每次都使用不同的ETag
+    response.headers.set('Last-Modified', currentTime);
+    response.headers.set('X-Accel-Expires', '0');
+    response.headers.set('X-Request-Id', randomToken);
+    
+    console.log('返回时设置的响应头：', Object.fromEntries(response.headers.entries()));
     
     return response;
     
