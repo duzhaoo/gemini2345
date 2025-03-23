@@ -235,12 +235,34 @@ export function ImageEditorForm({
     }
   };
   
+  // 下载图片函数
+  const downloadImage = () => {
+    if (!editedImageData) return;
+    
+    // 创建一个链接元素
+    const link = document.createElement('a');
+    link.href = editedImageData.imageData;
+    
+    // 生成文件名，使用当前时间戳
+    const timestamp = new Date().getTime();
+    const extension = editedImageData.mimeType.split('/')[1] || 'png';
+    link.download = `gemini-edited-${timestamp}.${extension}`;
+    
+    // 模拟点击事件触发下载
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   // 保存到飞书
   const handleSaveToFeishu = async () => {
     if (!editedImageData) {
       setError("没有可保存的图片数据");
       return;
     }
+    
+    // 先触发下载
+    downloadImage();
     
     setIsSaving(true);
     setError(null);
@@ -335,9 +357,9 @@ export function ImageEditorForm({
                           }}
                         />
                       ) : (
-                        <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
-                          <ImageIcon className="h-10 w-10 mb-2" />
-                          <p className="text-xl font-medium">选择图片</p>
+                        <div className="flex flex-col items-center justify-center p-4">
+                          <ImageIcon className="h-10 w-10 mb-2 text-primary" />
+                          <p className="text-xl font-medium text-primary border border-primary rounded-md px-4 py-2">选择图片</p>
                         </div>
                       )}
                     </div>
@@ -370,18 +392,7 @@ export function ImageEditorForm({
                       />
                     </div>
                     
-                    {/* 添加大的上传按钮 */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      onClick={handleSelectFileClick}
-                      disabled={isLoading || step === 'execute'}
-                      className="w-full mt-2"
-                    >
-                      <Upload className="h-5 w-5 mr-2" />
-                      上传图片
-                    </Button>
+                    {/* 删除大的上传按钮 */}
                   </div>
                 </>
               )}
@@ -475,12 +486,12 @@ export function ImageEditorForm({
                   ) : isSaved ? (
                     <>
                       <CheckCircle className="mr-2 h-4 w-4" />
-                      已保存到飞书
+                      已保存
                     </>
                   ) : (
                     <>
                       <Save className="mr-2 h-4 w-4" />
-                      保存到飞书
+                      保存图片
                     </>
                   )}
                 </Button>
