@@ -449,9 +449,9 @@ export function ImageEditorForm({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  准备中...
+                  上传中...
                 </>
-              ) : "准备编辑"}
+              ) : "上传图片"}
             </Button>
           ) : (
             <>

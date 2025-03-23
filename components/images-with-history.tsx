@@ -36,6 +36,7 @@ interface ImageGroup {
 // 统计信息接口已移除
 
 export function ImagesWithHistory() {
+  console.log('ImagesWithHistory 组件渲染 -', new Date().toISOString());
   const [imageGroups, setImageGroups] = useState<ImageGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,10 +47,19 @@ export function ImagesWithHistory() {
     setIsLoading(true);
     
     try {
-      // 防止浏览器缓存导致的问题
+      // 强制防止浏览器缓存导致的问题
       const timestamp = Date.now();
 
-      const response = await fetch(`/api/images-with-history?_t=${timestamp}`);
+      const response = await fetch(`/api/images-with-history?_t=${timestamp}`, {
+        // 添加禁用缓存的headers
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        // 确保每次都发送新请求
+        cache: 'no-store'
+      });
       const data = await response.json();
 
       if (!response.ok) {
@@ -287,6 +297,12 @@ export function ImagesWithHistory() {
     }
   };
 
+  // 添加刷新按钮的处理函数
+  const handleRefresh = () => {
+    console.log('手动刷新图片历史');
+    fetchImagesWithHistory();
+  };
+
   useEffect(() => {
     fetchImagesWithHistory();
   }, []);
@@ -337,8 +353,8 @@ export function ImagesWithHistory() {
     <div className="w-full space-y-4 mt-8 pt-8">
       <div className="flex justify-center items-center mb-8">
         <h2 className="text-6xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 text-transparent bg-clip-text inline-block">图片广场</h2>
-        <Button variant="ghost" size="icon" onClick={fetchImagesWithHistory} className="ml-4 rounded-full hover:bg-gray-100">
-          <RefreshCw className="h-5 w-5 text-gray-500 hover:text-gray-700" />
+        <Button variant="ghost" size="icon" onClick={handleRefresh} className="ml-4 rounded-full hover:bg-gray-100">
+          <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin text-blue-500' : 'text-gray-500 hover:text-gray-700'}`} />
         </Button>
       </div>
       

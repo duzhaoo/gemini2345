@@ -570,7 +570,7 @@ export async function GET(req: NextRequest) {
       ...stats
     };
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         imageGroups: result,
@@ -578,6 +578,14 @@ export async function GET(req: NextRequest) {
         stats: enhancedStats
       }
     } as ApiResponse);
+    
+    // 添加禁止缓存的响应头
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Surrogate-Control', 'no-store');
+    
+    return response;
     
   } catch (error) {
     console.error("获取图片及历史记录失败:", error);
