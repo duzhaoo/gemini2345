@@ -74,10 +74,12 @@ export async function POST(req: NextRequest) {
         fileToken: fileInfo.fileToken,
         prompt: prompt || "编辑的图片",
         timestamp: String(new Date().getTime()),  // 确保timestamp是字符串类型
-        parentId: id,  // 使用图片自身的id作为parentId
-        rootParentId: id,  // 使用图片自身的id作为rootParentId
+        parentId: id,  // 原始图片使用自身的id作为parentId
+        rootParentId: id,  // 原始图片使用自身的id作为rootParentId
         type: isUploadedImage === true ? "uploaded" : "generated"
       };
+      
+      console.log(`原始图片ID设置：id=${id}, parentId=${id}, rootParentId=${id}`);
       
       const recordInfo = await saveImageRecord(metadata);
       
