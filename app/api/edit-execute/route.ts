@@ -196,6 +196,9 @@ export async function POST(req: NextRequest) {
     // 解析请求数据
     const { prompt, prepareId, fileToken, rootParentId, parentId, isUploadedImage } = await req.json();
 
+    // 输出请求参数信息，便于调试
+    console.log(`编辑请求参数: prompt=${prompt?.substring(0, 20)}..., prepareId=${prepareId}, fileToken=${fileToken}, rootParentId=${rootParentId}, parentId=${parentId}, isUploadedImage=${isUploadedImage}`);
+
     // 验证必要参数
     if (!prompt) {
       return NextResponse.json({
@@ -218,10 +221,14 @@ export async function POST(req: NextRequest) {
     }
     
     try {
+      // 输出详细的日志，便于调试
+      console.log(`开始编辑图片: prepareId=${prepareId}, fileToken=${fileToken}, parentId=${parentId}, rootParentId=${rootParentId}`);
+      
       // 获取图片数据 - 使用当前选中的图片的fileToken
+      // 这里的fileToken应该是当前选中的图片的fileToken，而不是原始图片的fileToken
       const { imageData, mimeType } = await fetchImageDataFromFeishu(fileToken);
       
-      console.log(`使用当前选中的图片进行编辑，fileToken: ${fileToken}`);
+      console.log(`成功获取当前选中的图片数据，fileToken: ${fileToken}, mimeType: ${mimeType}`);
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);
