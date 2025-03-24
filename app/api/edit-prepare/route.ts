@@ -136,13 +136,22 @@ export async function POST(req: NextRequest) {
         }
       } else if (isDataUrl) {
         // 处理数据URL（已编辑图片的预览）
-        console.log('检测到数据URL，尝试从请求中提取原始图片ID');
+        console.log('检测到数据URL，尝试从请求中提取图片ID');
         
         // 使用之前已解析的请求数据
-        if (originalImageId) {
+        // 在请求中添加一个当前图片ID参数，表示最近编辑的图片ID
+        const currentImageId = requestData.currentImageId;
+        
+        if (currentImageId) {
+          // 如果提供了当前图片ID，优先使用它
+          imageId = currentImageId;
+          console.log(`使用当前图片ID进行编辑: ${imageId}`);
+        } else if (originalImageId) {
+          // 如果没有当前图片ID，但有原始图片ID，使用原始图片ID
           imageId = originalImageId;
           console.log(`从请求中提取的原始图片ID: ${imageId}`);
         } else if (rootParentId) {
+          // 如果都没有，但有根父级ID，使用根父级ID
           imageId = rootParentId;
           console.log(`从请求中提取的根父级ID: ${imageId}`);
         }

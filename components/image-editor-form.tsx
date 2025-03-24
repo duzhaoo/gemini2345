@@ -147,6 +147,7 @@ export function ImageEditorForm({
         },
         body: JSON.stringify({ 
           imageUrl: prepareUrl,
+          currentImageId: editedImageData?.id, // 传递当前图片ID（如果有），表示最近编辑的图片ID
           originalImageId: originalImageId, // 传递原始图片ID（如果有）
           rootParentId: rootParentId       // 传递根父级ID（如果有）
         }),
