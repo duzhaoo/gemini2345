@@ -194,7 +194,7 @@ function parseGeminiResponse(response: any): {
 export async function POST(req: NextRequest) {
   try {
     // 解析请求数据
-    const { prompt, prepareId, fileToken, rootParentId, parentId, isUploadedImage } = await req.json();
+    const { prompt, prepareId, fileToken, rootParentId, parentId, isUploadedImage, dataUrl } = await req.json();
 
     // 输出请求参数信息，便于调试
     console.log(`编辑请求参数: prompt=${prompt?.substring(0, 20)}..., prepareId=${prepareId}, fileToken=${fileToken}, rootParentId=${rootParentId}, parentId=${parentId}, isUploadedImage=${isUploadedImage}`);
@@ -210,12 +210,15 @@ export async function POST(req: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
 
-    if (!fileToken) {
+    // 检查是否有dataUrl
+    const hasDataUrl = !!dataUrl;
+
+    if (!fileToken && !hasDataUrl) {
       return NextResponse.json({
         success: false,
         error: {
-          code: "MISSING_FILE_TOKEN",
-          message: "缺少文件Token参数"
+          code: "MISSING_IMAGE_SOURCE",
+          message: "缺少图片来源参数(fileToken或dataUrl)"
         }
       } as ApiResponse, { status: 400 });
     }
@@ -224,11 +227,30 @@ export async function POST(req: NextRequest) {
       // 输出详细的日志，便于调试
       console.log(`开始编辑图片: prepareId=${prepareId}, fileToken=${fileToken}, parentId=${parentId}, rootParentId=${rootParentId}`);
       
-      // 获取图片数据 - 使用当前选中的图片的fileToken
-      // 这里的fileToken应该是当前选中的图片的fileToken，而不是原始图片的fileToken
-      const { imageData, mimeType } = await fetchImageDataFromFeishu(fileToken);
+      // 获取图片数据 - 根据来源不同有两种方式
+      let imageData: string;
+      let mimeType: string;
       
-      console.log(`成功获取当前选中的图片数据，fileToken: ${fileToken}, mimeType: ${mimeType}`);
+      if (hasDataUrl) {
+        // 从数据URL中提取图片数据
+        console.log('检测到dataUrl参数，从中提取图片数据');
+        const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        
+        if (!matches || matches.length !== 3) {
+          throw new Error("无效的数据URL格式");
+        }
+        
+        mimeType = matches[1];
+        imageData = matches[2];
+        console.log(`从数据URL成功提取图片数据，MIME类型: ${mimeType}`);
+      } else {
+        // 使用fileToken从飞书获取图片数据
+        console.log(`使用fileToken从飞书获取图片数据: ${fileToken}`);
+        const result = await fetchImageDataFromFeishu(fileToken);
+        imageData = result.imageData;
+        mimeType = result.mimeType;
+        console.log(`成功获取当前选中的图片数据，fileToken: ${fileToken}, mimeType: ${mimeType}`);
+      }
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);

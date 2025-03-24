@@ -277,6 +277,7 @@ export function ChatInterface({
         if (lastImageMessage && lastImageMessage.imageUrl) {
           imageUrl = lastImageMessage.imageUrl;
           isLastGeneratedImage = true;
+          console.log(`继续编辑图片: 使用最后生成/编辑的图片 ID=${currentImageId}`);
         } else {
           throw new Error("找不到最后生成/编辑的图片");
         }

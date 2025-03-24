@@ -149,6 +149,18 @@ export async function POST(req: NextRequest) {
           imageId = rootParentId;
           console.log(`没有当前选中的图片ID，使用根父级ID: ${imageId}`);
         }
+        
+        // 如果仍然没有有效的imageId，返回错误
+        if (!imageId) {
+          console.error('无法从数据URL中提取图片ID，且请求中没有提供有效的originalImageId或rootParentId');
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: "MISSING_IMAGE_ID",
+              message: "无法从数据URL获取图片ID，请重新上传图片"
+            }
+          } as ApiResponse, { status: 400 });
+        }
       }
       
       if (!imageId) {
