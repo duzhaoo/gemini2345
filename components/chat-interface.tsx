@@ -271,6 +271,17 @@ export function ChatInterface({
         if (!imageUrl) {
           throw new Error("上传图片后未返回有效的URL");
         }
+        
+        // 从上传响应中获取图片ID并设置为当前图片ID
+        if (uploadData.data?.metadata?.id) {
+          const newImageId = uploadData.data.metadata.id;
+          console.log(`上传图片成功，获取到ID: ${newImageId}`);
+          setCurrentImageId(newImageId);
+          // 对于新上传的图片，其自身就是根图片
+          setRootParentId(newImageId);
+        } else {
+          console.error("上传响应中没有图片ID");
+        }
       } 
       // 如果没有上传文件或预览URL，但有当前图片ID，则使用最后一次生成/编辑的图片
       else if (!imageUrl && currentImageId) {
