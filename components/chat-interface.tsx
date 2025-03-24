@@ -211,19 +211,24 @@ export function ChatInterface({
       }
 
       if (data.data?.imageUrl) {
+        // 获取正确的图片ID
+        const imageId = data.data.metadata?.id || data.data.id;
+        console.log(`生成图片成功，图片ID: ${imageId}`);
+        
         // 更新加载消息为图像消息
         replaceLoadingMessage(loadingId, {
           type: "image",
           content: "已生成图像",
           imageUrl: data.data.imageUrl,
-          imageId: data.data.id,
+          imageId: imageId, // 使用正确的图片ID
           sender: "bot"
         });
 
         // 保存当前图片ID和根父级ID
-        if (data.data.id) {
-          setCurrentImageId(data.data.id);
-          setRootParentId(data.data.id); // 对于新生成的图片，rootParentId与当前图片ID相同
+        if (imageId) {
+          setCurrentImageId(imageId);
+          setRootParentId(imageId); // 对于新生成的图片，rootParentId与当前图片ID相同
+          console.log(`已设置当前图片ID: ${imageId}, 根父级ID: ${imageId}`);
         }
 
         // 调用回调函数
