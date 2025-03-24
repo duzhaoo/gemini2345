@@ -2,15 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ImageGeneratorForm } from "@/components/image-generator-form";
-import { ImageEditorForm } from "@/components/image-editor-form";
-// ImageDisplay组件已删除
+import { ChatInterface } from "@/components/chat-interface";
 import { ImagesWithHistory } from "@/components/images-with-history";
 
 export default function Home() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("generate");
+
   const [isVercelEnv, setIsVercelEnv] = useState(false);
   // 改名为currentImageId，更准确地反映其用途：当前选中的图片ID，而不是原始图片ID
   const [currentImageId, setCurrentImageId] = useState<string | null>(null);
@@ -21,6 +18,11 @@ export default function Home() {
     console.log(`当前选中的图片ID更新为: ${currentImageId}`);
     console.log(`根父级ID更新为: ${rootParentId}`);
   }, [currentImageId, rootParentId]);
+  
+  // 添加聊天界面相关的日志
+  useEffect(() => {
+    console.log(`当前图片URL更新为: ${currentImageUrl || '无'}`);
+  }, [currentImageUrl]);
 
   // 检测是否在Vercel环境中
   useEffect(() => {
@@ -43,8 +45,7 @@ export default function Home() {
       setCurrentImageId(null);
       setRootParentId(null);
     }
-    // Automatically switch to edit tab after generating an image
-    setActiveTab("edit");
+
   };
 
   const handleImageEdited = (imageUrl: string, imageId?: string, parentId?: string, rootId?: string) => {
@@ -91,26 +92,10 @@ export default function Home() {
       </div>
 
       <div className="w-full max-w-3xl mx-auto mb-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="generate">生成图像</TabsTrigger>
-            <TabsTrigger value="edit">编辑图像</TabsTrigger>
-          </TabsList>
-          <TabsContent value="generate">
-            <ImageGeneratorForm 
-              onImageGenerated={handleImageGenerated} 
-            />
-          </TabsContent>
-          <TabsContent value="edit">
-            <ImageEditorForm 
-              onImageEdited={handleImageEdited} 
-              initialImageUrl={currentImageUrl || ""}
-              readOnlyUrl={!!currentImageUrl}
-              originalImageId={currentImageId || undefined} // 使用当前选中的图片ID
-              rootParentId={rootParentId || undefined}
-            />
-          </TabsContent>
-        </Tabs>
+        <ChatInterface 
+          onImageGenerated={handleImageGenerated}
+          onImageEdited={handleImageEdited}
+        />
       </div>
 
 
