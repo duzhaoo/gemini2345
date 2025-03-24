@@ -14,7 +14,7 @@ interface ImageEditorFormProps {
   onImageEdited?: (imageUrl: string, imageId?: string, parentId?: string, rootParentId?: string) => void;
   initialImageUrl?: string;
   readOnlyUrl?: boolean;
-  originalImageId?: string;  // 原始图片ID
+  originalImageId?: string;  // 当前选中的图片ID（注意：变量名称有误导性，实际上是当前选中的图片ID）
   rootParentId?: string;     // 根父级ID
 }
 
@@ -115,6 +115,12 @@ export function ImageEditorForm({
     try {
       let prepareUrl = imageUrl;
       
+      // 添加详细的日志输出，便于调试
+      console.log(`准备编辑图片，当前参数:`);
+      console.log(`  当前选中的图片ID: ${originalImageId || '无'}`);
+      console.log(`  根父级ID: ${rootParentId || '无'}`);
+      console.log(`  图片URL: ${prepareUrl || '使用上传的文件'}`);
+      
       if (selectedFile) {
         // 如果有上传的文件，先上传图片
         const formData = new FormData();
@@ -147,10 +153,16 @@ export function ImageEditorForm({
         },
         body: JSON.stringify({ 
           imageUrl: prepareUrl,
-          originalImageId: originalImageId, // 传递原始图片ID（如果有）
+          originalImageId: originalImageId, // 传递当前选中的图片ID（如果有）
           rootParentId: rootParentId       // 传递根父级ID（如果有）
         }),
       });
+      
+      console.log(`已发送编辑准备请求，参数:`);
+      console.log(`  imageUrl: ${prepareUrl}`);
+      console.log(`  originalImageId: ${originalImageId || '无'}`);
+      console.log(`  rootParentId: ${rootParentId || '无'}`);
+      
       
       const prepareData = await prepareResponse.json();
       
@@ -159,6 +171,12 @@ export function ImageEditorForm({
       }
       
       // 保存准备数据并进入下一步
+      console.log(`准备成功，获取到的数据:`);
+      console.log(`  prepareId: ${prepareData.data.prepareId}`);
+      console.log(`  fileToken: ${prepareData.data.fileToken}`);
+      console.log(`  parentId: ${prepareData.data.parentId || '无'}`);
+      console.log(`  rootParentId: ${prepareData.data.rootParentId || '无'}`);
+      
       setPrepareData(prepareData.data);
       setStep('execute');
       
@@ -188,6 +206,14 @@ export function ImageEditorForm({
     
     try {
       // 调用执行API
+      console.log(`准备发送执行编辑请求，参数:`);
+      console.log(`  prompt: ${prompt}`);
+      console.log(`  prepareId: ${prepareData.prepareId}`);
+      console.log(`  fileToken: ${prepareData.fileToken}`);
+      console.log(`  parentId: ${prepareData.parentId || '无'}`);
+      console.log(`  rootParentId: ${prepareData.rootParentId || '无'}`);
+      console.log(`  isUploadedImage: ${prepareData.isUploadedImage}`);
+      
       const executeResponse = await fetch("/api/edit-execute", {
         method: "POST",
         headers: {
@@ -197,7 +223,7 @@ export function ImageEditorForm({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
-          parentId: prepareData.parentId, // 传递parentId参数，确保对已编辑过的图片再次编辑时保持parentId一致
+          parentId: originalImageId, // 使用当前选中的图片ID作为parentId，而不是使用prepareData中的parentId
           rootParentId: prepareData.rootParentId,
           isUploadedImage: prepareData.isUploadedImage
         }),
