@@ -94,188 +94,132 @@ export function ImagesWithHistory() {
           
           const groupId = group.original.id;
           
-          // 存储组
-          groupsById[groupId] = {
-            original: group.original,
-            edits: [...(group.edits || [])],
-            editHistory: [...(group.editHistory || [])]
-          };
+          // 确定根父ID - 如果图片有rootParentId，则使用它作为分组依据；否则使用图片自身ID
+          const rootId = group.original.rootParentId || groupId;
           
-          // 建立 rootParentId 映射
-          rootParentIdToGroupId[groupId] = groupId;
+          console.log(`原始图片 ${groupId} 使用 rootId=${rootId} 进行分组`);
           
-          // 如果原始图片有 rootParentId，也要建立映射
-          if (group.original.rootParentId) {
-            rootParentIdToGroupId[group.original.rootParentId] = groupId;
-            console.log(`原始图片 ${groupId} 有 rootParentId=${group.original.rootParentId}，建立映射`);
-          }
-          
-          // 遍历所有编辑图片，维护映射关系
-          const edits = Array.isArray(group.edits) ? group.edits : [];
-          edits.forEach(edit => {
-            // 如果编辑图片有 rootParentId，则将其映射到这个组
-            if (edit.rootParentId) {
-              rootParentIdToGroupId[edit.rootParentId] = groupId;
-              console.log(`编辑图片 ${edit.id} 有 rootParentId=${edit.rootParentId}，映射到组 ${groupId}`);
+          // 如果已存在以该rootId为键的组，则将该图片添加到该组；否则创建新组
+          if (rootParentIdToGroupId[rootId] && groupsById[rootParentIdToGroupId[rootId]]) {
+            // 当前图片应该添加到已存在的组中
+            const targetGroupId = rootParentIdToGroupId[rootId];
+            
+            // 如果该图片不是目标组的原始图片，则将其添加为编辑
+            if (targetGroupId !== groupId) {
+              if (!groupsById[targetGroupId].edits.some(e => e.id === group.original.id)) {
+                groupsById[targetGroupId].edits.push(group.original);
+                console.log(`将图片 ${groupId} 添加到组 ${targetGroupId} 的编辑列表中`);
+              }
             }
             
-            // 编辑图片本身的ID也映射到这个组
-            rootParentIdToGroupId[edit.id] = groupId;
-          });
+            // 将该图片的编辑添加到目标组
+            const edits = Array.isArray(group.edits) ? group.edits : [];
+            edits.forEach(edit => {
+              if (!groupsById[targetGroupId].edits.some(e => e.id === edit.id)) {
+                groupsById[targetGroupId].edits.push(edit);
+                console.log(`将编辑 ${edit.id} 添加到组 ${targetGroupId}`);
+              }
+            });
+            
+            // 将该图片的编辑历史添加到目标组
+            const history = Array.isArray(group.editHistory) ? group.editHistory : [];
+            history.forEach(h => {
+              if (!groupsById[targetGroupId].editHistory.some(eh => eh.id === h.id)) {
+                groupsById[targetGroupId].editHistory.push(h);
+                console.log(`将编辑历史 ${h.id} 添加到组 ${targetGroupId}`);
+              }
+            });
+          } else {
+            // 创建新组
+            groupsById[groupId] = {
+              original: group.original,
+              edits: [...(group.edits || [])],
+              editHistory: [...(group.editHistory || [])]
+            };
+            
+            // 建立rootId到组ID的映射
+            rootParentIdToGroupId[rootId] = groupId;
+            console.log(`为rootId=${rootId}创建新组，组ID=${groupId}`);
+          }
+          
+          // 将图片自身ID也映射到其所属组
+          rootParentIdToGroupId[groupId] = rootParentIdToGroupId[rootId];
         });
         
         console.log('第一阶段: 已完成原始图片组的构建和映射初始化');
         console.log('当前映射表中有 ' + Object.keys(rootParentIdToGroupId).length + ' 个ID映射');
         
-        // 第二阶段：处理所有编辑图片，确保它们被分配到正确的组
-        console.log('第二阶段: 重新分配所有编辑图片...');
-        
-        // 创建一个新集合来跟踪已处理的图片，防止重复添加
-        const processedEditIds = new Set<string>();
+        // 第二阶段：处理未被分组的编辑图片
+        console.log('第二阶段: 处理未被分组的编辑图片...');
         
         data.data.imageGroups.forEach(group => {
           const edits = Array.isArray(group.edits) ? group.edits : [];
           
           edits.forEach(edit => {
-            // 如果这个编辑已经被处理过，跳过
-            if (processedEditIds.has(edit.id)) {
-              return;
+            // 跳过没有rootParentId的编辑图片
+            if (!edit.rootParentId) {
+              console.log(`编辑图片 ${edit.id} 没有rootParentId，使用其自身ID作为rootParentId`);
+              edit.rootParentId = edit.id;
             }
             
-            // 通过 rootParentId 找到应该分配的组
-            let targetGroupId = null;
-            
-            // 优先校验rootParentId - 这是最重要的判断条件
-            if (edit.rootParentId) {
-              // 首先尝试直接根据rootParentId映射找到组
-              if (rootParentIdToGroupId[edit.rootParentId]) {
-                targetGroupId = rootParentIdToGroupId[edit.rootParentId];
+            // 检查该编辑图片的rootParentId是否已映射到某个组
+            if (!rootParentIdToGroupId[edit.rootParentId]) {
+              // 未找到映射，创建新的映射
+              // 查找是否有现有组可以容纳这个编辑
+              let foundGroup = false;
+              
+              // 如果该编辑有parentId且parentId已映射到某个组，使用该组
+              if (edit.parentId && rootParentIdToGroupId[edit.parentId]) {
+                const targetGroupId = rootParentIdToGroupId[edit.parentId];
+                rootParentIdToGroupId[edit.rootParentId] = targetGroupId;
+                foundGroup = true;
+                console.log(`编辑图片 ${edit.id} 的rootParentId=${edit.rootParentId}没有映射，但其parentId=${edit.parentId}已映射到组${targetGroupId}`);
               }
-              // 如果没有映射，尝试直接查找该rootParentId的组
-              else if (groupsById[edit.rootParentId]) {
-                targetGroupId = edit.rootParentId;
-              }
-              // 如果还是没有找到，则找与该rootParentId关联的原始图片
-              else {
-                // 遍历组找一找是否有原始图片的rootParentId与当前图片的rootParentId匹配
-                for (const gid in groupsById) {
-                  const g = groupsById[gid];
-                  if (g.original && g.original.rootParentId === edit.rootParentId) {
-                    targetGroupId = gid;
-                    break;
-                  }
+              
+              // 如果仍未找到组，则创建新组
+              if (!foundGroup) {
+                // 这种情况下，我们选择不创建新组，而是将rootParentId映射到当前图片组
+                // 这样可以确保所有图片都有一个组
+                if (group.original && group.original.id) {
+                  rootParentIdToGroupId[edit.rootParentId] = group.original.id;
+                  console.log(`编辑图片 ${edit.id} 的rootParentId=${edit.rootParentId}没有映射到任何组，将其映射到当前组${group.original.id}`);
                 }
               }
             }
             
-            // 如果还没有找到组，尝试使用parentId
-            if (!targetGroupId && edit.parentId) {
-              // 首先检查是否有parentId的映射
-              if (rootParentIdToGroupId[edit.parentId]) {
-                targetGroupId = rootParentIdToGroupId[edit.parentId];
-              }
-              // 尝试直接使用parentId作为组ID
-              else if (groupsById[edit.parentId]) {
-                targetGroupId = edit.parentId;
-              }
-            }
-            
-            // 如果还是找不到，使用当前组
-            if (!targetGroupId && group.original && group.original.id) {
-              targetGroupId = group.original.id;
-            }
-            
-            // 如果找到了目标组，将编辑添加到该组
-            if (targetGroupId && groupsById[targetGroupId]) {
-              // 确保不重复添加
-              if (!groupsById[targetGroupId].edits.some(e => e.id === edit.id)) {
-                groupsById[targetGroupId].edits.push(edit);
-                console.log(`将编辑 ${edit.id} 添加到组 ${targetGroupId}`);
-              }
-              
-              // 标记为已处理
-              processedEditIds.add(edit.id);
-              
-              // 更新映射表
-              rootParentIdToGroupId[edit.id] = targetGroupId;
+            // 更新该编辑图片的ID映射
+            if (edit.rootParentId && rootParentIdToGroupId[edit.rootParentId]) {
+              rootParentIdToGroupId[edit.id] = rootParentIdToGroupId[edit.rootParentId];
             }
           });
         });
         
-        // 第三阶段：处理所有编辑历史记录
-        console.log('第三阶段: 重新分配所有编辑历史记录...');
-        
-        // 创建一个新集合来跟踪已处理的历史记录
-        const processedHistoryIds = new Set<string>();
+        // 第三阶段：处理编辑历史记录
+        console.log('第三阶段: 根据rootParentId处理编辑历史记录...');
         
         data.data.imageGroups.forEach(group => {
           const histories = Array.isArray(group.editHistory) ? group.editHistory : [];
           
           histories.forEach(history => {
-            // 如果这个历史记录已经被处理过，跳过
-            if (processedHistoryIds.has(history.id)) {
+            // 确定要使用的rootParentId
+            const historyRootId = history.rootParentId || history.imageId || (history.resultImageId ? rootParentIdToGroupId[history.resultImageId] : null);
+            
+            if (!historyRootId) {
+              console.log(`编辑历史 ${history.id} 没有有效的rootParentId或关联图片ID，保留在当前组`);
               return;
             }
             
-            // 尝试扮派到正确的组
-            let targetGroupId = null;
-            
-            // 优先检查rootParentId - 这是最重要的判断条件
-            if (history.rootParentId) {
-              // 首先尝试直接根据rootParentId映射找到组
-              if (rootParentIdToGroupId[history.rootParentId]) {
-                targetGroupId = rootParentIdToGroupId[history.rootParentId];
-              }
-              // 如果没有映射，尝试直接查找该rootParentId的组
-              else if (groupsById[history.rootParentId]) {
-                targetGroupId = history.rootParentId;
-              }
-              // 如果还是没有找到，则找与该rootParentId关联的原始图片
-              else {
-                // 遍历所有组寻找原始图片的rootParentId和当前历史记录的rootParentId匹配的
-                for (const gid in groupsById) {
-                  const g = groupsById[gid];
-                  if (g.original && g.original.rootParentId === history.rootParentId) {
-                    targetGroupId = gid;
-                    break;
-                  }
-                }
-              }
-            }
-            
-            // 如果还没有找到组，尝试其他方法
-            // 使用imageId寻找
-            if (!targetGroupId && history.imageId) {
-              if (rootParentIdToGroupId[history.imageId]) {
-                targetGroupId = rootParentIdToGroupId[history.imageId];
-              } else if (groupsById[history.imageId]) {
-                targetGroupId = history.imageId;
-              }
-            }
-            
-            // 使用resultImageId寻找
-            if (!targetGroupId && history.resultImageId) {
-              if (rootParentIdToGroupId[history.resultImageId]) {
-                targetGroupId = rootParentIdToGroupId[history.resultImageId];
-              } else if (groupsById[history.resultImageId]) {
-                targetGroupId = history.resultImageId;
-              }
-            }
-            
-            // 如果上述方法都无法找到组，尝试使用当前组
-            if (!targetGroupId && group.original && group.original.id && groupsById[group.original.id]) {
-              targetGroupId = group.original.id;
-            }
-            
-            // 如果找到了目标组，将历史记录添加到该组
-            if (targetGroupId && groupsById[targetGroupId]) {
-              // 确保不重复添加
-              if (!groupsById[targetGroupId].editHistory.some(h => h.id === history.id)) {
-                groupsById[targetGroupId].editHistory.push(history);
-              }
+            // 检查该历史记录的rootParentId是否已映射到某个组
+            if (rootParentIdToGroupId[historyRootId]) {
+              const targetGroupId = rootParentIdToGroupId[historyRootId];
               
-              // 标记为已处理
-              processedHistoryIds.add(history.id);
+              // 确保不重复添加
+              if (targetGroupId !== group.original.id && !groupsById[targetGroupId].editHistory.some(h => h.id === history.id)) {
+                groupsById[targetGroupId].editHistory.push(history);
+                console.log(`将编辑历史 ${history.id} 添加到组 ${targetGroupId}`);
+              }
+            } else {
+              console.log(`编辑历史 ${history.id} 的rootParentId=${historyRootId}没有映射到任何组，保留在当前组`);
             }
           });
         });
