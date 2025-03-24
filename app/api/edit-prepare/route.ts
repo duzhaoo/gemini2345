@@ -154,16 +154,20 @@ export async function POST(req: NextRequest) {
         } as ApiResponse, { status: 400 });
       }
       
-      // 获取图片元数据
+      // 获取图片元数据 - 使用当前选中的图片ID而不是原始图片ID
       const imageMetadata = await getImageMetadataFromFeishu(imageId);
+      
+      // 如果是对已编辑图片再次编辑，使用当前选中的图片作为编辑基础
+      // 而不是使用原始图片
+      const currentFileToken = imageMetadata.fileToken;
       
       // 返回准备结果
       return NextResponse.json({
         success: true,
         data: {
-          prepareId: imageMetadata.id,
-          fileToken: imageMetadata.fileToken,
-          rootParentId: imageMetadata.rootParentId,
+          prepareId: imageId, // 使用当前选中的图片ID作为parentId
+          fileToken: currentFileToken, // 使用当前选中的图片的fileToken
+          rootParentId: imageMetadata.rootParentId || imageId, // 保留原始的rootParentId
           isUploadedImage: imageMetadata.isUploadedImage,
           originalUrl: imageUrl
         }

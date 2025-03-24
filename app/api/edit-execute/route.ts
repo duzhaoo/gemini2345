@@ -218,8 +218,10 @@ export async function POST(req: NextRequest) {
     }
     
     try {
-      // 获取图片数据
+      // 获取图片数据 - 使用当前选中的图片的fileToken
       const { imageData, mimeType } = await fetchImageDataFromFeishu(fileToken);
+      
+      console.log(`使用当前选中的图片进行编辑，fileToken: ${fileToken}`);
       
       // 调用Gemini API编辑图片
       const result = await callGeminiApi(prompt, imageData, mimeType);
