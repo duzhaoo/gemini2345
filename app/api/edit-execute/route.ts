@@ -289,9 +289,7 @@ export async function POST(req: NextRequest) {
         // 对parentId进行更严格的处理
         // 当前选中的图片ID应该是parentId
         // 如果没有parentId，才使用prepareId
-        let actualParentId = parentId || prepareId;
-        
-        // 添加详细的日志输出，便于调试
+        const actualParentId = parentId || prepareId;
         if (parentId) {
           console.log(`使用传入的parentId: ${parentId}`);
         } else {
@@ -300,8 +298,6 @@ export async function POST(req: NextRequest) {
         
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
-        
-        // 确保图片编辑链的完整性，将新生成的图片作为下一次编辑的父级
         
         // 返回成功响应，包含base64图片数据
         return NextResponse.json({
