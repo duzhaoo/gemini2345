@@ -60,9 +60,13 @@ async function getImageMetadataFromFeishu(imageId: string) {
     throw new Error(`无法获取图片记录或fileToken: ${imageId}`);
   }
   
+  // 添加日志输出图片记录信息，便于调试
+  console.log(`获取到图片记录: id=${imageRecord.id}, parentId=${imageRecord.parentId}, rootParentId=${imageRecord.rootParentId}`);
+  
   return {
     id: imageRecord.id,
     fileToken: imageRecord.fileToken,
+    parentId: imageRecord.parentId, // 返回图片的parentId
     rootParentId: imageRecord.rootParentId,
     isUploadedImage: imageRecord.type === "uploaded"
   };
@@ -167,6 +171,7 @@ export async function POST(req: NextRequest) {
         data: {
           prepareId: imageId, // 使用当前选中的图片ID作为parentId
           fileToken: currentFileToken, // 使用当前选中的图片的fileToken
+          parentId: imageMetadata.parentId, // 传递当前图片的parentId，确保再次编辑时保持parentId一致
           rootParentId: imageMetadata.rootParentId || imageId, // 保留原始的rootParentId
           isUploadedImage: imageMetadata.isUploadedImage,
           originalUrl: imageUrl

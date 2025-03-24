@@ -194,7 +194,7 @@ function parseGeminiResponse(response: any): {
 export async function POST(req: NextRequest) {
   try {
     // 解析请求数据
-    const { prompt, prepareId, fileToken, rootParentId, isUploadedImage } = await req.json();
+    const { prompt, prepareId, fileToken, rootParentId, parentId, isUploadedImage } = await req.json();
 
     // 验证必要参数
     if (!prompt) {
@@ -259,8 +259,13 @@ export async function POST(req: NextRequest) {
         // 使用传入的rootParentId或者将prepareId作为rootParentId
         const actualRootParentId = rootParentId || prepareId;
         
+        // 确保对已编辑过的图片再次编辑时，保持parentId一致
+        // 如果传入了parentId，则使用传入的parentId，否则使用prepareId
+        // 这样可以确保对已编辑过的图片再次编辑时，最终图片的parentId与已编辑过的图片的parentId一致
+        const actualParentId = parentId || prepareId;
+        
         // 添加日志输出，便于调试ID关系
-        console.log(`编辑图片ID关系: 新ID=${id}, parentId=${prepareId}, rootParentId=${actualRootParentId}`);
+        console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
         
         // 返回成功响应，包含base64图片数据
         return NextResponse.json({
@@ -273,7 +278,7 @@ export async function POST(req: NextRequest) {
             fileToken: fileToken,           // 返回原始图片的fileToken
             prepareId: prepareId,           // 返回准备ID
             rootParentId: actualRootParentId, // 使用传入的rootParentId或者将prepareId作为rootParentId
-            parentId: prepareId, // 编辑后的图片使用编辑前图片的ID作为parentId
+            parentId: actualParentId, // 使用实际的parentId，确保对已编辑过的图片再次编辑时保持parentId一致
             isUploadedImage: isUploadedImage === true,
             textResponse: textResponse || ""
           }

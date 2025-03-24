@@ -39,6 +39,7 @@ export function ImageEditorForm({
   const [prepareData, setPrepareData] = useState<{
     prepareId: string;
     fileToken: string;
+    parentId?: string;     // 添加parentId属性，用于保持对已编辑过的图片再次编辑时parentId一致
     rootParentId?: string;
     isUploadedImage: boolean;
     originalUrl: string;
@@ -195,6 +196,7 @@ export function ImageEditorForm({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
+          parentId: prepareData.parentId, // 传递parentId参数，确保对已编辑过的图片再次编辑时保持parentId一致
           rootParentId: prepareData.rootParentId,
           isUploadedImage: prepareData.isUploadedImage
         }),
