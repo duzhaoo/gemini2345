@@ -52,6 +52,7 @@ export function ImageEditorForm({
     id: string;
     fileToken: string;
     prepareId: string;
+    parentId?: string;     // 添加parentId属性，用于保持对已编辑过的图片再次编辑时parentId一致
     rootParentId?: string;
     isUploadedImage: boolean;
   } | null>(null);
@@ -222,6 +223,7 @@ export function ImageEditorForm({
           id: executeData.data.id,
           fileToken: executeData.data.fileToken,
           prepareId: executeData.data.prepareId,
+          parentId: executeData.data.parentId, // 添加parentId属性，确保对已编辑过的图片再次编辑时parentId一致
           rootParentId: executeData.data.rootParentId,
           isUploadedImage: executeData.data.isUploadedImage
         });
@@ -304,6 +306,7 @@ export function ImageEditorForm({
           mimeType: editedImageData.mimeType,
           prompt: prompt,
           prepareId: editedImageData.prepareId,
+          parentId: editedImageData.parentId, // 传递parentId参数，确保对已编辑过的图片再次编辑时保持parentId一致
           rootParentId: editedImageData.rootParentId,
           isUploadedImage: editedImageData.isUploadedImage
         }),

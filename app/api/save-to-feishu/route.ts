@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
       mimeType, 
       prompt, 
       prepareId, 
+      parentId, // 添加parentId参数
       rootParentId, 
       isUploadedImage,
       // 添加可能的额外元数据
@@ -68,14 +69,15 @@ export async function POST(req: NextRequest) {
       console.log("开始保存记录到飞书多维表格...");
       
       // 判断是原始图片还是编辑后的图片
-      let parentId = id; // 默认使用自身 ID
-      let rootParentId = id; // 默认使用自身 ID
+      let actualParentId = id; // 默认使用自身 ID
+      let actualRootParentId = id; // 默认使用自身 ID
       
-      // 如果是编辑后的图片，则使用prepareId作为parentId和rootParentId
+      // 如果是编辑后的图片
       if (prepareId) {
-        parentId = prepareId; // 使用编辑前图片的ID作为parentId
-        rootParentId = rootParentId || prepareId; // 如果有rootParentId则使用，否则使用prepareId
-        console.log(`编辑后图片ID设置：id=${id}, parentId=${parentId}, rootParentId=${rootParentId}`);
+        // 优先使用传入的parentId，如果没有才使用prepareId
+        actualParentId = parentId || prepareId;
+        actualRootParentId = rootParentId || prepareId;
+        console.log(`编辑后图片ID设置：id=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
       } else {
         console.log(`原始图片ID设置：id=${id}, parentId=${id}, rootParentId=${id}`);
       }
@@ -87,8 +89,8 @@ export async function POST(req: NextRequest) {
         fileToken: fileInfo.fileToken,
         prompt: prompt || "编辑的图片",
         timestamp: String(new Date().getTime()),  // 确保timestamp是字符串类型
-        parentId: parentId,  // 根据判断设置正确的parentId
-        rootParentId: rootParentId,  // 根据判断设置正确的rootParentId
+        parentId: actualParentId,  // 使用实际的parentId
+        rootParentId: actualRootParentId,  // 使用实际的rootParentId
         type: isUploadedImage === true ? "uploaded" : "generated"
       };
       
