@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ApiResponse } from "@/lib/types";
-import { getAccessToken } from "@/lib/feishu";
+import { getAccessToken, uploadImageToFeishu, saveImageRecord } from "@/lib/feishu";
 import crypto from 'crypto';
 
 // 初始化Gemini API客户端
@@ -278,9 +278,9 @@ export async function POST(req: NextRequest) {
         } as ApiResponse, { status: 500 });
       }
       
-      // 直接返回base64图片数据，不保存到飞书
+      // 将生成的图片上传到飞书并保存到数据库
       try {
-        console.log("直接返回编辑后的图片数据");
+        console.log("开始将编辑后的图片保存到飞书");
         
         // 生成唯一ID
         const id = crypto.randomUUID();
@@ -321,7 +321,40 @@ export async function POST(req: NextRequest) {
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
         
-        // 返回成功响应，包含base64图片数据
+        // 1. 上传图片到飞书
+        console.log(`开始上传图片到飞书存储`);
+        const timestamp = Date.now();
+        const fileName = `edited_image_${id}_${timestamp}.png`;
+        
+        // 上传图片到飞书
+        const uploadResult = await uploadImageToFeishu(
+          generatedImageData, 
+          fileName, 
+          responseMimeType || 'image/png'
+        );
+        
+        if (uploadResult.error) {
+          console.error(`上传图片到飞书失败: ${uploadResult.errorMessage}`);
+          throw new Error(`上传图片到飞书失败: ${uploadResult.errorMessage}`);
+        }
+        
+        console.log(`图片上传到飞书成功，获取到fileToken: ${uploadResult.fileToken}`);
+        
+        // 2. 保存记录到飞书数据库
+        const saveResult = await saveImageRecord({
+          id: id,
+          url: uploadResult.url,
+          fileToken: uploadResult.fileToken,
+          prompt: prompt,
+          timestamp: timestamp,
+          parentId: actualParentId,
+          rootParentId: actualRootParentId,
+          type: "generated"
+        });
+        
+        console.log(`图片记录已保存到飞书数据库，记录ID: ${saveResult.record_id || '未知'}`);
+        
+        // 返回成功响应，包含base64图片数据和飞书文件信息
         return NextResponse.json({
           success: true,
           data: {
@@ -329,12 +362,13 @@ export async function POST(req: NextRequest) {
             mimeType: responseMimeType,     // 返回图片MIME类型
             id: id,
             prompt: prompt,
-            fileToken: fileToken,           // 返回原始图片的fileToken
+            fileToken: uploadResult.fileToken, // 返回新的fileToken
             prepareId: prepareId,           // 返回准备ID
             rootParentId: actualRootParentId, // 使用传入的rootParentId或者将prepareId作为rootParentId
             parentId: actualParentId, // 使用实际的parentId，确保对已编辑过的图片再次编辑时保持parentId一致
             isUploadedImage: isUploadedImage === true,
-            textResponse: textResponse || ""
+            textResponse: textResponse || "",
+            feishuUrl: uploadResult.url // 添加飞书URL
           }
         } as ApiResponse);
         
