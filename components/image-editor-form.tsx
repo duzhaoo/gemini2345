@@ -147,7 +147,6 @@ export function ImageEditorForm({
         },
         body: JSON.stringify({ 
           imageUrl: prepareUrl,
-          currentImageId: editedImageData?.id, // 传递当前图片ID（如果有），表示最近编辑的图片ID
           originalImageId: originalImageId, // 传递原始图片ID（如果有）
           rootParentId: rootParentId       // 传递根父级ID（如果有）
         }),
@@ -235,11 +234,17 @@ export function ImageEditorForm({
         
         // 如果有回调函数，调用它，并传递图片ID信息
         if (onImageEdited) {
+          // 添加详细的日志，便于调试图片ID传递
+          console.log(`图片编辑完成，准备调用onImageEdited回调函数:`);
+          console.log(`  新图片ID: ${executeData.data.id}`);
+          console.log(`  父级ID: ${executeData.data.parentId}`);
+          console.log(`  根父级ID: ${executeData.data.rootParentId}`);
+          
           onImageEdited(
             dataUrl,
             executeData.data.id,        // 新图片ID
-            prepareData.prepareId,      // 父级ID（原图片ID）
-            prepareData.rootParentId    // 根父级ID
+            executeData.data.parentId,  // 父级ID（当前选中的图片ID）
+            executeData.data.rootParentId // 根父级ID
           );
         }
       } else {

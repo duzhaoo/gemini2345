@@ -441,10 +441,35 @@ export function ImagesWithHistory() {
                 let parentImage = null;
                 if (history.imageId && imageById[history.imageId]) {
                   parentImage = imageById[history.imageId];
+                  console.log(`编辑历史中找到父图片: ID=${history.imageId}, URL=${parentImage.url}`);
+                } else {
+                  console.log(`编辑历史中没有找到父图片: imageId=${history.imageId}`);
                 }
                 
                 // 标记为已处理
                 processedImageIds.add(history.resultImageId);
+                
+                // 添加详细的日志，便于调试
+                console.log(`将编辑历史添加到编辑对中:`);
+                console.log(`  结果图片ID: ${history.resultImageId}`);
+                console.log(`  父图片ID: ${history.imageId}`);
+                console.log(`  根父级ID: ${history.rootParentId || resultImage.rootParentId || '无'}`);
+                
+                // 确保我们使用正确的rootParentId
+                let effectiveRootParentId = history.rootParentId;
+                if (!effectiveRootParentId && resultImage.rootParentId) {
+                  effectiveRootParentId = resultImage.rootParentId;
+                  console.log(`  使用结果图片中的rootParentId: ${effectiveRootParentId}`);
+                } else if (effectiveRootParentId) {
+                  console.log(`  使用编辑历史中的rootParentId: ${effectiveRootParentId}`);
+                } else if (parentImage && parentImage.rootParentId) {
+                  effectiveRootParentId = parentImage.rootParentId;
+                  console.log(`  使用父图片中的rootParentId: ${effectiveRootParentId}`);
+                } else {
+                  // 如果所有地方都没有rootParentId，则使用父图片ID作为rootParentId
+                  effectiveRootParentId = history.imageId;
+                  console.log(`  没有找到rootParentId，使用父图片ID作为rootParentId: ${effectiveRootParentId}`);
+                }
                 
                 editPairs.push({
                   prompt: history.prompt || "未提供编辑提示词",
@@ -452,9 +477,14 @@ export function ImagesWithHistory() {
                   parentImage: parentImage,
                   resultImageId: history.resultImageId,
                   parentImageId: history.imageId,
-                  rootParentId: history.rootParentId || resultImage.rootParentId,
+                  rootParentId: effectiveRootParentId,
                   createdAt: history.createdAt,
-                  type: "history"
+                  type: "history",
+                  metadata: {
+                    imageType: resultImage.type || '未知',
+                    parentType: parentImage ? parentImage.type || '未知' : '无父图片',
+                    rootParentId: effectiveRootParentId
+                  }
                 });
                 
 
@@ -474,13 +504,26 @@ export function ImagesWithHistory() {
               // 添加到已处理列表
               processedImageIds.add(edit.id);
               
+              // 添加详细的日志，便于调试
+              console.log(`添加孤立图片到编辑对:`);
+              console.log(`  图片ID: ${edit.id}`);
+              console.log(`  父图片ID: ${edit.parentId || '无'}`);
+              console.log(`  根父级ID: ${edit.rootParentId || '无'}`);
+              
               // 添加到编辑对列表
               editPairs.push({
                 prompt: edit.prompt || "未知编辑指令",
                 image: imageById[edit.id],
                 resultImageId: edit.id,
+                parentImageId: edit.parentId, // 添加父图片ID
+                rootParentId: edit.rootParentId, // 添加根父级ID
                 createdAt: edit.createdAt,
-                type: "orphan_image"
+                type: "orphan_image",
+                metadata: {
+                  imageType: edit.type || '未知',
+                  parentType: edit.parentId ? '有父图片' : '无父图片',
+                  rootParentId: edit.rootParentId || '无'
+                }
               });
             }
           });

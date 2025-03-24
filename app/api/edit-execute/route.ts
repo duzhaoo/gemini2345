@@ -263,13 +263,38 @@ export async function POST(req: NextRequest) {
         // 生成唯一ID
         const id = crypto.randomUUID();
         
-        // 使用传入的rootParentId或者将prepareId作为rootParentId
-        const actualRootParentId = rootParentId || prepareId;
+        // 输出原始参数，便于调试
+        console.log(`原始参数: prepareId=${prepareId}, parentId=${parentId}, rootParentId=${rootParentId}`);
         
-        // 确保对已编辑过的图片再次编辑时，保持parentId一致
-        // 如果传入了parentId，则使用传入的parentId，否则使用prepareId
-        // 这样可以确保对已编辑过的图片再次编辑时，最终图片的parentId与已编辑过的图片的parentId一致
+        // 对rootParentId进行更严格的处理
+        // 如果有rootParentId，则使用它
+        // 如果没有rootParentId但有parentId，则需要检查parentId是否就是根图片
+        // 如果都没有，才使用prepareId
+        let actualRootParentId = rootParentId;
+        if (!actualRootParentId) {
+          if (parentId && parentId === prepareId) {
+            // 如果parentId和prepareId相同，说明当前图片就是原始图片
+            // 则将原始图片ID作为rootParentId
+            actualRootParentId = parentId;
+            console.log(`没有rootParentId，parentId和prepareId相同，使用parentId作为rootParentId: ${parentId}`);
+          } else {
+            // 如果都没有，才使用prepareId
+            actualRootParentId = prepareId;
+            console.log(`没有rootParentId，使用prepareId作为rootParentId: ${prepareId}`);
+          }
+        } else {
+          console.log(`使用传入的rootParentId: ${rootParentId}`);
+        }
+        
+        // 对parentId进行更严格的处理
+        // 当前选中的图片ID应该是parentId
+        // 如果没有parentId，才使用prepareId
         const actualParentId = parentId || prepareId;
+        if (parentId) {
+          console.log(`使用传入的parentId: ${parentId}`);
+        } else {
+          console.log(`没有传入parentId，使用prepareId作为parentId: ${prepareId}`);
+        }
         
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);

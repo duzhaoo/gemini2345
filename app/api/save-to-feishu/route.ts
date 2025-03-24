@@ -72,11 +72,30 @@ export async function POST(req: NextRequest) {
       let actualParentId = id; // 默认使用自身 ID
       let actualRootParentId = id; // 默认使用自身 ID
       
+      // 输出详细的日志，便于调试
+      console.log(`保存图片到飞书，接收到的参数: id=${id}, prepareId=${prepareId}, parentId=${parentId}, rootParentId=${rootParentId}`);
+      
       // 如果是编辑后的图片
       if (prepareId) {
         // 优先使用传入的parentId，如果没有才使用prepareId
-        actualParentId = parentId || prepareId;
-        actualRootParentId = rootParentId || prepareId;
+        // 这里的parentId应该是当前选中的图片ID，而不是原始图片ID
+        if (parentId) {
+          actualParentId = parentId;
+          console.log(`使用传入的parentId: ${parentId}`);
+        } else {
+          actualParentId = prepareId;
+          console.log(`没有传入parentId，使用prepareId作为parentId: ${prepareId}`);
+        }
+        
+        // 优先使用传入的rootParentId，如果没有才使用prepareId
+        if (rootParentId) {
+          actualRootParentId = rootParentId;
+          console.log(`使用传入的rootParentId: ${rootParentId}`);
+        } else {
+          actualRootParentId = prepareId;
+          console.log(`没有传入rootParentId，使用prepareId作为rootParentId: ${prepareId}`);
+        }
+        
         console.log(`编辑后图片ID设置：id=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
       } else {
         console.log(`原始图片ID设置：id=${id}, parentId=${id}, rootParentId=${id}`);
