@@ -309,12 +309,23 @@ export async function POST(req: NextRequest) {
         }
         
         // 对parentId进行更严格的处理
-        // 当前选中的图片ID应该是parentId
-        // 如果没有parentId，才使用prepareId
-        const actualParentId = parentId || prepareId;
-        if (parentId) {
+        // 验证parentId不是fileToken
+        let actualParentId = parentId;
+        
+        // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const isFileToken = parentId && !uuidRegex.test(parentId) && parentId.length > 20;
+        
+        if (isFileToken) {
+          console.log(`检测到parentId可能是fileToken，而不是图片ID: ${parentId}`);
+          // 如果parentId看起来像是fileToken，则使用prepareId替代
+          actualParentId = prepareId;
+          console.log(`使用prepareId作为parentId替代: ${prepareId}`);
+        } else if (parentId) {
           console.log(`使用传入的parentId: ${parentId}`);
         } else {
+          // 如果没有parentId，才使用prepareId
+          actualParentId = prepareId;
           console.log(`没有传入parentId，使用prepareId作为parentId: ${prepareId}`);
         }
         
