@@ -174,23 +174,30 @@ export async function POST(req: NextRequest) {
       // 确保使用正确的parentId和rootParentId
       // 如果当前图片是原始图片，则parentId和rootParentId都是当前图片ID
       // 如果当前图片是编辑图片，则保留其parentId和rootParentId
-      const actualParentId = imageMetadata.parentId || imageId;
-      const actualRootParentId = imageMetadata.rootParentId || imageId;
+      
+      // 使用originalImageId作为parentId，而不是使用imageMetadata.parentId
+      // 因为imageMetadata.parentId可能是fileToken而不是正确的parentId
+      const actualParentId = originalImageId || imageId;
+      const actualRootParentId = rootParentId || imageId;
       
       console.log(`准备编辑图片: 使用当前图片ID=${imageId}, fileToken=${currentFileToken}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
+      console.log(`原始参数: originalImageId=${originalImageId}, rootParentId=${rootParentId}`);
+      console.log(`从飞书获取的元数据: parentId=${imageMetadata.parentId}, rootParentId=${imageMetadata.rootParentId}`);
       
       // 返回准备结果
       return NextResponse.json({
         success: true,
         data: {
-          prepareId: imageId, // 使用当前选中的图片ID作为parentId
-          fileToken: currentFileToken, // 使用当前选中的图片的fileToken
-          parentId: actualParentId, // 传递当前图片的parentId，确保再次编辑时保持parentId一致
-          rootParentId: actualRootParentId, // 保留原始的rootParentId
+          prepareId: imageId, // 当前选中的图片ID
+          fileToken: currentFileToken, // 当前选中的图片的fileToken
+          parentId: actualParentId, // 使用originalImageId作为parentId，确保编辑链的连续性
+          rootParentId: actualRootParentId, // 使用rootParentId或者imageId作为rootParentId
           isUploadedImage: imageMetadata.isUploadedImage,
           originalUrl: imageUrl
         }
       } as ApiResponse);
+      
+      // 注意：返回的数据中，parentId已设置为originalImageId（当前选中的图片ID），而不是使用从飞书获取的parentId
       
     } catch (error: any) {
       console.error(`准备编辑图片失败:`, error);
