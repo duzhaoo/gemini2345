@@ -50,10 +50,10 @@ export function ChatInterface({
   const [currentImageId, setCurrentImageId] = useState<string | null>(null);
   const [rootParentId, setRootParentId] = useState<string | null>(null);
 
-  // 自动滚动到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // 注释掉自动滚动到底部的功能
+  // useEffect(() => {
+  //   messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // }, [messages]);
 
   // 清理预览URL
   useEffect(() => {
@@ -154,8 +154,8 @@ export function ChatInterface({
       if (isGenerate) {
         // 处理图像生成请求
         await handleGenerateImage(input, loadingMessageId);
-      } else if (selectedFile || previewUrl) {
-        // 处理图像编辑请求
+      } else if (selectedFile || previewUrl || currentImageId) {
+        // 处理图像编辑请求（上传的图片、预览图片或最后一次生成/编辑的图片）
         await handleEditImage(input, loadingMessageId);
       } else {
         // 一般对话，提示用户需要明确指令
@@ -242,6 +242,7 @@ export function ChatInterface({
   const handleEditImage = async (prompt: string, loadingId: string) => {
     try {
       let imageUrl = previewUrl;
+      let isLastGeneratedImage = false;
       
       // 如果有上传的文件，先上传图片
       if (selectedFile) {
@@ -264,6 +265,20 @@ export function ChatInterface({
         
         if (!imageUrl) {
           throw new Error("上传图片后未返回有效的URL");
+        }
+      } 
+      // 如果没有上传文件或预览URL，但有当前图片ID，则使用最后一次生成/编辑的图片
+      else if (!imageUrl && currentImageId) {
+        // 查找最后一个图片消息
+        const lastImageMessage = [...messages].reverse().find(
+          msg => msg.type === 'image' && msg.sender === 'bot' && msg.imageId === currentImageId
+        );
+        
+        if (lastImageMessage && lastImageMessage.imageUrl) {
+          imageUrl = lastImageMessage.imageUrl;
+          isLastGeneratedImage = true;
+        } else {
+          throw new Error("找不到最后生成/编辑的图片");
         }
       }
       
