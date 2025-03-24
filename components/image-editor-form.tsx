@@ -34,8 +34,7 @@ export function ImageEditorForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // 两步编辑状态
-  const [step, setStep] = useState<'prepare' | 'execute'>('prepare');
+  // 编辑状态
   const [prepareData, setPrepareData] = useState<{
     prepareId: string;
     fileToken: string;
@@ -101,28 +100,36 @@ export function ImageEditorForm({
     fileInputRef.current?.click();
   };
 
-  // 处理准备步骤
-  const handlePrepare = async () => {
-    // 检查是否有图像来源（URL或上传的文件）
+  // 处理编辑流程（单步操作）
+  const handleEdit = async () => {
+    // 检查是否有图像来源和编辑指令
     if (!imageUrl && !selectedFile) {
       setError("请上传图片或输入图像网址");
+      return;
+    }
+    
+    if (!prompt.trim()) {
+      setError("请输入编辑指令");
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setIsSaved(false); // 重置保存状态
+    setEditedImageData(null); // 清除之前的编辑数据
 
     try {
       let prepareUrl = imageUrl;
       
       // 添加详细的日志输出，便于调试
-      console.log(`准备编辑图片，当前参数:`);
+      console.log(`开始编辑图片，当前参数:`);
       console.log(`  当前选中的图片ID: ${originalImageId || '无'}`);
       console.log(`  根父级ID: ${rootParentId || '无'}`);
       console.log(`  图片URL: ${prepareUrl || '使用上传的文件'}`);
+      console.log(`  编辑指令: ${prompt}`);
       
+      // 第一步: 如果有上传的文件，先上传图片
       if (selectedFile) {
-        // 如果有上传的文件，先上传图片
         const formData = new FormData();
         formData.append('image', selectedFile);
         formData.append('prompt', "用户上传的原始图片"); // 添加固定提示词
@@ -145,7 +152,7 @@ export function ImageEditorForm({
         }
       }
       
-      // 调用准备API
+      // 第二步: 准备图片
       const prepareResponse = await fetch("/api/edit-prepare", {
         method: "POST",
         headers: {
@@ -158,54 +165,22 @@ export function ImageEditorForm({
         }),
       });
       
-      console.log(`已发送编辑准备请求，参数:`);
-      console.log(`  imageUrl: ${prepareUrl}`);
-      console.log(`  originalImageId: ${originalImageId || '无'}`);
-      console.log(`  rootParentId: ${rootParentId || '无'}`);
-      
-      
-      const prepareData = await prepareResponse.json();
+      const prepareResult = await prepareResponse.json();
       
       if (!prepareResponse.ok) {
-        throw new Error(prepareData.error?.message || "准备编辑图像失败");
+        throw new Error(prepareResult.error?.message || "准备编辑图像失败");
       }
       
-      // 保存准备数据并进入下一步
+      // 保存准备数据
+      const prepareData = prepareResult.data;
       console.log(`准备成功，获取到的数据:`);
-      console.log(`  prepareId: ${prepareData.data.prepareId}`);
-      console.log(`  fileToken: ${prepareData.data.fileToken}`);
-      console.log(`  parentId: ${prepareData.data.parentId || '无'}`);
-      console.log(`  rootParentId: ${prepareData.data.rootParentId || '无'}`);
+      console.log(`  prepareId: ${prepareData.prepareId}`);
+      console.log(`  fileToken: ${prepareData.fileToken}`);
+      console.log(`  parentId: ${prepareData.parentId || '无'}`);
+      console.log(`  rootParentId: ${prepareData.rootParentId || '无'}`);
       
-      setPrepareData(prepareData.data);
-      setStep('execute');
-      
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "准备过程中发生错误");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  // 处理执行步骤
-  const handleExecute = async () => {
-    if (!prompt.trim()) {
-      setError("请输入编辑指令");
-      return;
-    }
+      // 第三步: 执行编辑
     
-    if (!prepareData) {
-      setError("请先准备图像");
-      return;
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    setIsSaved(false); // 重置保存状态
-    setEditedImageData(null); // 清除之前的编辑数据
-    
-    try {
-      // 调用执行API
       console.log(`准备发送执行编辑请求，参数:`);
       console.log(`  prompt: ${prompt}`);
       console.log(`  prepareId: ${prepareData.prepareId}`);
@@ -443,11 +418,10 @@ export function ImageEditorForm({
                           setImageUrl(e.target.value);
                           setSelectedFile(null);
                           setPreviewUrl(e.target.value || null);
-                          // 重置步骤和准备数据
-                          setStep('prepare');
+                          // 重置准备数据
                           setPrepareData(null);
                         }}
-                        disabled={isLoading || step === 'execute'}
+                        disabled={isLoading}
                         className="flex-1"
                       />
                     </div>
@@ -457,22 +431,7 @@ export function ImageEditorForm({
                 </>
               )}
             </div>
-            {/* 隐藏步骤指示器 */}
-            <div className="hidden">
-              <div className="flex items-center">
-                <div className={`rounded-full w-6 h-6 flex items-center justify-center ${step === 'prepare' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                  1
-                </div>
-                <span className="ml-2 text-sm font-medium">准备图片</span>
-              </div>
-              <Separator className="w-8" />
-              <div className="flex items-center">
-                <div className={`rounded-full w-6 h-6 flex items-center justify-center ${step === 'execute' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                  2
-                </div>
-                <span className="ml-2 text-sm font-medium">编辑图片</span>
-              </div>
-            </div>
+
             
             {/* 编辑指令输入框 */}
             <div className="flex flex-col space-y-2 mt-2">
@@ -483,7 +442,7 @@ export function ImageEditorForm({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="min-h-[100px]"
-                disabled={isLoading || step === 'prepare'}
+                disabled={isLoading}
               />
             </div>
             
@@ -499,38 +458,22 @@ export function ImageEditorForm({
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-          {step === 'prepare' ? (
-            <Button 
-              type="button" 
-              onClick={handlePrepare} 
-              disabled={isLoading || (!imageUrl && !selectedFile)} 
-              className="w-full"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  上传中...
-                </>
-              ) : "上传图片"}
-            </Button>
-          ) : (
-            <>
-              <Button 
-                type="button" 
-                onClick={handleExecute} 
-                disabled={isLoading || !prompt.trim() || !prepareData} 
-                className="w-full"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    编辑中...
-                  </>
-                ) : "执行编辑"}
-              </Button>
-              
-              {/* 保存到飞书按钮 */}
-              {editedImageData && (
+          <Button 
+            type="button" 
+            onClick={handleEdit} 
+            disabled={isLoading || (!imageUrl && !selectedFile) || !prompt.trim()} 
+            className="w-full"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                正在编辑...
+              </>
+            ) : "编辑图片"}
+          </Button>
+          
+          {/* 保存到飞书按钮 */}
+          {editedImageData && (
                 <Button 
                   type="button" 
                   onClick={handleSaveToFeishu} 
@@ -556,8 +499,7 @@ export function ImageEditorForm({
                   )}
                 </Button>
               )}
-            </>
-          )}
+          
         </CardFooter>
     </Card>
   );

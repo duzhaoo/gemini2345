@@ -252,24 +252,7 @@ function parseGeminiResponse(response: any): {
 export async function POST(req: NextRequest) {
   console.log(`编辑图片API - 请求开始处理`);
   
-  let timeoutId: NodeJS.Timeout | null = null;
-  let isTimedOut = false;
-  
   try {
-    // 设置较短的超时时间，避免Vercel的10秒超时限制
-    const PROCESSING_TIMEOUT = 8000; // 8秒超时，留足够的时间返回错误响应
-    
-    // 创建一个超时Promise
-    const timeoutPromise = new Promise<NextResponse>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        isTimedOut = true;
-        console.log("编辑图片API - 处理超时，返回超时错误响应");
-        reject(new Error("处理超时"));
-      }, PROCESSING_TIMEOUT);
-    });
-    
-    // 实际处理逻辑封装在一个Promise中
-    const processingPromise = new Promise<NextResponse>(async (resolve) => {
       try {
         // 检测环境
         const isVercelEnv = process.env.VERCEL === '1';
@@ -442,7 +425,7 @@ export async function POST(req: NextRequest) {
           }
           
           // 返回成功响应
-          resolve(NextResponse.json({
+          return NextResponse.json({
             success: true,
             data: {
               id: metadata?.id || "",
@@ -450,44 +433,31 @@ export async function POST(req: NextRequest) {
               prompt: prompt,
               textResponse: textResponse || ""
             }
-          } as ApiResponse));
+          } as ApiResponse);
         } catch (error: any) {
           console.error(`编辑图片处理错误:`, error);
-          resolve(NextResponse.json({
+          return NextResponse.json({
             success: false,
             error: {
               code: "PROCESSING_ERROR",
               message: "处理图片编辑请求时发生错误",
               details: error instanceof Error ? error.message : String(error)
             }
-          } as ApiResponse, { status: 500 }));
+          } as ApiResponse, { status: 500 });
         }
       } catch (error: any) {
         console.error(`编辑图片API请求处理错误:`, error);
-        resolve(NextResponse.json({
+        return NextResponse.json({
           success: false,
           error: {
             code: "REQUEST_PROCESSING_ERROR",
             message: "处理请求时发生错误",
             details: error instanceof Error ? error.message : String(error)
           }
-        } as ApiResponse, { status: 500 }));
+        } as ApiResponse, { status: 500 });
       }
-    });
-    
-    // 等待处理完成或超时
-    const result = await Promise.race([processingPromise, timeoutPromise]);
-    return result;
+
   } catch (error: any) {
-    if (isTimedOut) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "PROCESSING_TIMEOUT",
-          message: "处理超时，请稍后重试"
-        }
-      } as ApiResponse, { status: 500 });
-    }
     
     console.error(`编辑图片API - 处理错误:`, error);
     return NextResponse.json({
@@ -497,9 +467,5 @@ export async function POST(req: NextRequest) {
         message: "内部错误，请稍后重试"
       }
     } as ApiResponse, { status: 500 });
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
   }
 }
