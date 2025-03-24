@@ -254,8 +254,11 @@ export async function POST(req: NextRequest) {
         // 生成唯一ID
         const id = crypto.randomUUID();
         
+        // 使用传入的rootParentId或者将prepareId作为rootParentId
+        const actualRootParentId = rootParentId || prepareId;
+        
         // 添加日志输出，便于调试ID关系
-        console.log(`编辑图片ID关系: 新ID=${id}, parentId=${prepareId}, rootParentId=${prepareId}`);
+        console.log(`编辑图片ID关系: 新ID=${id}, parentId=${prepareId}, rootParentId=${actualRootParentId}`);
         
         // 返回成功响应，包含base64图片数据
         return NextResponse.json({
@@ -267,7 +270,7 @@ export async function POST(req: NextRequest) {
             prompt: prompt,
             fileToken: fileToken,           // 返回原始图片的fileToken
             prepareId: prepareId,           // 返回准备ID
-            rootParentId: prepareId, // 编辑后的图片使用编辑前图片的ID作为rootParentId
+            rootParentId: actualRootParentId, // 使用传入的rootParentId或者将prepareId作为rootParentId
             parentId: prepareId, // 编辑后的图片使用编辑前图片的ID作为parentId
             isUploadedImage: isUploadedImage === true,
             textResponse: textResponse || ""

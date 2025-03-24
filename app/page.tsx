@@ -12,6 +12,8 @@ export default function Home() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("generate");
   const [isVercelEnv, setIsVercelEnv] = useState(false);
+  const [originalImageId, setOriginalImageId] = useState<string | null>(null);
+  const [rootParentId, setRootParentId] = useState<string | null>(null);
 
   // 检测是否在Vercel环境中
   useEffect(() => {
@@ -23,14 +25,32 @@ export default function Home() {
     }
   }, []);
 
-  const handleImageGenerated = (imageUrl: string) => {
+  const handleImageGenerated = (imageUrl: string, imageId?: string) => {
     setCurrentImageUrl(imageUrl);
+    // 如果提供了图片ID，保存为原始图片ID
+    if (imageId) {
+      setOriginalImageId(imageId);
+      setRootParentId(imageId); // 对于新生成的图片，rootParentId与originalImageId相同
+    } else {
+      setOriginalImageId(null);
+      setRootParentId(null);
+    }
     // Automatically switch to edit tab after generating an image
     setActiveTab("edit");
   };
 
-  const handleImageEdited = (imageUrl: string) => {
+  const handleImageEdited = (imageUrl: string, imageId?: string, parentId?: string, rootId?: string) => {
     setCurrentImageUrl(imageUrl);
+    // 如果提供了图片ID信息，更新状态
+    if (imageId) {
+      setOriginalImageId(imageId);
+    }
+    if (rootId) {
+      setRootParentId(rootId);
+    } else if (parentId) {
+      // 如果没有提供rootId但有parentId，使用parentId作为rootParentId
+      setRootParentId(parentId);
+    }
   };
 
   return (
@@ -58,6 +78,8 @@ export default function Home() {
               onImageEdited={handleImageEdited} 
               initialImageUrl={currentImageUrl || ""}
               readOnlyUrl={!!currentImageUrl}
+              originalImageId={originalImageId || undefined}
+              rootParentId={rootParentId || undefined}
             />
           </TabsContent>
         </Tabs>

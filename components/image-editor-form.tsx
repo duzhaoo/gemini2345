@@ -11,15 +11,19 @@ import Image from "next/image";
 import { Upload, ImageIcon, Loader2, Save, CheckCircle } from "lucide-react";
 
 interface ImageEditorFormProps {
-  onImageEdited?: (imageUrl: string) => void;
+  onImageEdited?: (imageUrl: string, imageId?: string, parentId?: string, rootParentId?: string) => void;
   initialImageUrl?: string;
   readOnlyUrl?: boolean;
+  originalImageId?: string;  // 原始图片ID
+  rootParentId?: string;     // 根父级ID
 }
 
 export function ImageEditorForm({ 
   onImageEdited, 
   initialImageUrl = "", 
-  readOnlyUrl = false 
+  readOnlyUrl = false,
+  originalImageId,
+  rootParentId
 }: ImageEditorFormProps) {
   // 基本状态
   const [prompt, setPrompt] = useState("");
@@ -139,7 +143,11 @@ export function ImageEditorForm({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ imageUrl: prepareUrl }),
+        body: JSON.stringify({ 
+          imageUrl: prepareUrl,
+          originalImageId: originalImageId, // 传递原始图片ID（如果有）
+          rootParentId: rootParentId       // 传递根父级ID（如果有）
+        }),
       });
       
       const prepareData = await prepareResponse.json();
@@ -220,9 +228,14 @@ export function ImageEditorForm({
         const dataUrl = `data:${executeData.data.mimeType};base64,${executeData.data.imageData}`;
         setPreviewUrl(dataUrl);
         
-        // 如果有回调函数，调用它
+        // 如果有回调函数，调用它，并传递图片ID信息
         if (onImageEdited) {
-          onImageEdited(dataUrl);
+          onImageEdited(
+            dataUrl,
+            executeData.data.id,        // 新图片ID
+            prepareData.prepareId,      // 父级ID（原图片ID）
+            prepareData.rootParentId    // 根父级ID
+          );
         }
       } else {
         throw new Error("未能获取编辑后的图片数据");

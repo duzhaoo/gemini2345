@@ -71,7 +71,8 @@ async function getImageMetadataFromFeishu(imageId: string) {
 export async function POST(req: NextRequest) {
   try {
     // 解析请求数据
-    const { imageUrl } = await req.json();
+    const requestData = await req.json();
+    const { imageUrl, originalImageId, rootParentId } = requestData;
 
     // 验证必要参数
     if (!imageUrl) {
@@ -84,27 +85,71 @@ export async function POST(req: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
     
-    // 验证URL类型
-    if (!imageUrl.includes('open.feishu.cn')) {
+    // 验证URL类型 - 允许飞书URL或数据缓存URL
+    const isFeishuUrl = imageUrl.includes('open.feishu.cn');
+    const isDataUrl = imageUrl.startsWith('data:');
+    const isApiProxyUrl = imageUrl.includes('/api/image-proxy');
+    const isLocalUrl = imageUrl.startsWith('/') && !imageUrl.startsWith('/api/');
+    
+    if (!isFeishuUrl && !isDataUrl && !isApiProxyUrl && !isLocalUrl) {
+      console.log(`不支持的URL类型: ${imageUrl.substring(0, 50)}...`);
       return NextResponse.json({
         success: false,
         error: {
           code: "INVALID_URL",
-          message: "只支持飞书图片URL"
+          message: "不支持的URL类型，请使用飞书图片URL或本地图片"
         }
       } as ApiResponse, { status: 400 });
     }
     
     try {
-      // 从飞书URL提取图片ID
-      const imageId = await extractImageIdFromUrl(imageUrl);
+      // 处理不同类型的URL
+      let imageId = null;
+      
+      if (isFeishuUrl) {
+        // 从飞书URL提取图片ID
+        imageId = await extractImageIdFromUrl(imageUrl);
+        console.log(`从飞书URL提取的图片ID: ${imageId}`);
+      } else if (isApiProxyUrl) {
+        // 从代理URL中提取原始URL
+        try {
+          const urlObj = new URL(imageUrl, 'http://localhost');
+          const originalUrl = urlObj.searchParams.get('url');
+          if (originalUrl) {
+            imageId = await extractImageIdFromUrl(originalUrl);
+            console.log(`从代理URL提取的原始URL: ${originalUrl.substring(0, 50)}...`);
+            console.log(`从原始URL提取的图片ID: ${imageId}`);
+          }
+        } catch (err) {
+          console.error('解析代理URL失败:', err);
+        }
+      } else if (isLocalUrl) {
+        // 从本地URL提取ID
+        const matches = imageUrl.match(/\/images\/([a-zA-Z0-9-]+)\.(png|jpg|jpeg|webp)/i);
+        if (matches && matches[1]) {
+          imageId = matches[1];
+          console.log(`从本地URL提取的图片ID: ${imageId}`);
+        }
+      } else if (isDataUrl) {
+        // 处理数据URL（已编辑图片的预览）
+        console.log('检测到数据URL，尝试从请求中提取原始图片ID');
+        
+        // 使用之前已解析的请求数据
+        if (originalImageId) {
+          imageId = originalImageId;
+          console.log(`从请求中提取的原始图片ID: ${imageId}`);
+        } else if (rootParentId) {
+          imageId = rootParentId;
+          console.log(`从请求中提取的根父级ID: ${imageId}`);
+        }
+      }
       
       if (!imageId) {
         return NextResponse.json({
           success: false,
           error: {
             code: "MISSING_IMAGE_ID",
-            message: "无法从飞书URL获取图片ID"
+            message: "无法从图片URL获取图片ID"
           }
         } as ApiResponse, { status: 400 });
       }
