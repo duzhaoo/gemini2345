@@ -223,7 +223,7 @@ export function ImageEditorForm({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
-          parentId: originalImageId, // 使用当前选中的图片ID作为parentId，而不是使用prepareData中的parentId
+          parentId: originalImageId, // 使用当前选中的图片ID作为parentId，确保编辑链的连续性
           rootParentId: prepareData.rootParentId,
           isUploadedImage: prepareData.isUploadedImage
         }),
@@ -266,10 +266,14 @@ export function ImageEditorForm({
           console.log(`  父级ID: ${executeData.data.parentId}`);
           console.log(`  根父级ID: ${executeData.data.rootParentId}`);
           
+          // 确保使用正确的parentId，如果API返回的parentId为空，则使用当前选中的图片ID
+          const actualParentId = executeData.data.parentId || originalImageId;
+          console.log(`  实际使用的父级ID: ${actualParentId}`);
+          
           onImageEdited(
             dataUrl,
             executeData.data.id,        // 新图片ID
-            executeData.data.parentId,  // 父级ID（当前选中的图片ID）
+            actualParentId,             // 使用实际的父级ID，确保编辑链的连续性
             executeData.data.rootParentId // 根父级ID
           );
         }
