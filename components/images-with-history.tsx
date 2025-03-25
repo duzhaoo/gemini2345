@@ -208,36 +208,43 @@ export function ImagesWithHistory() {
               return;
             }
             
-            // 检查这个编辑图片的rootParentId或parentId是否指向一个上传图片
+            // 检查这个编辑图片的各种关联ID，优先级：rootParentId > parentId > 所属组ID
+            // 这样可以确保编辑链不会断开
             const editRootId = edit.rootParentId || edit.parentId || groupId;
             
-            if (uploadedOriginalImages[editRootId]) {
-              // 如果编辑图片的rootParentId指向上传图片
-              console.log(`发现编辑图片(ID=${edit.id})的rootParentId/parentId(${editRootId})指向上传图片`);
-              
-              // 将这个编辑图片添加到上传图片的组中
-              if (!groupsById[editRootId].edits.some(e => e.id === edit.id)) {
-                groupsById[editRootId].edits.push(edit);
+            // 检查是否有上传图片关联
+            let targetGroupId = null;
+            
+            // 1. 首先检查rootParentId是否指向上传图片
+            if (edit.rootParentId && uploadedOriginalImages[edit.rootParentId]) {
+              targetGroupId = edit.rootParentId;
+              console.log(`编辑图片(ID=${edit.id})的rootParentId(${edit.rootParentId})指向上传图片`);
+            }
+            // 2. 然后检查parentId是否指向上传图片
+            else if (edit.parentId && uploadedOriginalImages[edit.parentId]) {
+              targetGroupId = edit.parentId;
+              console.log(`编辑图片(ID=${edit.id})的parentId(${edit.parentId})指向上传图片`);
+            }
+            // 3. 检查editRootId是否指向上传图片
+            else if (uploadedOriginalImages[editRootId]) {
+              targetGroupId = editRootId;
+              console.log(`编辑图片(ID=${edit.id})的关联ID(${editRootId})指向上传图片`);
+            }
+            
+            if (targetGroupId) {
+              // 将这个编辑图片添加到目标上传图片的组中
+              if (!groupsById[targetGroupId].edits.some(e => e.id === edit.id)) {
+                groupsById[targetGroupId].edits.push(edit);
+                console.log(`将编辑图片(ID=${edit.id})添加到上传图片组(ID=${targetGroupId})`);
               }
               
               // 建立ID映射
-              rootParentIdToGroupId[edit.id] = editRootId;
-              processedIds.add(edit.id);
-            } else if (edit.parentId && uploadedOriginalImages[edit.parentId]) {
-              // 如果编辑图片的parentId指向上传图片
-              console.log(`发现编辑图片(ID=${edit.id})的parentId(${edit.parentId})指向上传图片`);
-              
-              // 将这个编辑图片添加到上传图片的组中
-              if (!groupsById[edit.parentId].edits.some(e => e.id === edit.id)) {
-                groupsById[edit.parentId].edits.push(edit);
-              }
-              
-              // 建立ID映射
-              rootParentIdToGroupId[edit.id] = edit.parentId;
+              rootParentIdToGroupId[edit.id] = targetGroupId;
               processedIds.add(edit.id);
             } else {
               // 如果不属于上传图片组，则映射到原始组
               rootParentIdToGroupId[edit.id] = groupId;
+              console.log(`编辑图片(ID=${edit.id})不关联上传图片，保留在原组(ID=${groupId})`);
             }
           });
         });
@@ -268,8 +275,15 @@ export function ImagesWithHistory() {
             // 跳过自身组和空组
             if (otherGroupId === uploadedId || !otherGroup || !otherGroup.original) return;
             
-            // 检查原始图片的关系
-            if (otherGroup.original.parentId === uploadedId || otherGroup.original.rootParentId === uploadedId) {
+            // 增强关联检查逻辑，检查原始图片的各种可能关联
+            const isRelated = (
+              otherGroup.original.parentId === uploadedId || 
+              otherGroup.original.rootParentId === uploadedId ||
+              // 增加额外的检查，如果原始图片的ID包含上传图片ID的一部分
+              (otherGroup.original.id && otherGroup.original.id.includes(uploadedId.substring(0, 8)))
+            );
+            
+            if (isRelated) {
               console.log(`发现原始图片ID=${otherGroup.original.id}与上传图片ID=${uploadedId}相关`);
               
               // 将这个原始图片添加到上传图片组的编辑图片中

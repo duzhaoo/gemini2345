@@ -198,7 +198,7 @@ export function ImageEditorForm({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
-          parentId: originalImageId, // 使用当前选中的图片ID作为parentId，而不是使用prepareData中的parentId
+          parentId: prepareData.prepareId, // 使用prepareId作为parentId，确保编辑链不会断开
           rootParentId: prepareData.rootParentId,
           isUploadedImage: prepareData.isUploadedImage
         }),
