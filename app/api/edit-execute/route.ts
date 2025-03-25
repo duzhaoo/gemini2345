@@ -308,19 +308,35 @@ export async function POST(req: NextRequest) {
           console.log(`使用传入的rootParentId: ${rootParentId}`);
         }
         
-        // 强制使用prepareId作为parentId，不再进行校验
-        let actualParentId = prepareId; // 直接强制使用prepareId
+        // 对parentId进行更严格的处理
+        // 验证parentId不是fileToken
+        let actualParentId = parentId;
         
-        // 从日志汇总当前所有参数，便于全面调试
-        console.log(`编辑图片 - 所有传入参数:`);  
-        console.log(`- prepareId: ${prepareId}`);  
-        console.log(`- fileToken: ${fileToken}`);  
-        console.log(`- parentId: ${parentId}`);  
-        console.log(`- rootParentId: ${rootParentId}`);  
-        console.log(`- isUploadedImage: ${isUploadedImage}`);  
+        // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
-        // 标记强制使用prepareId
-        console.log(`强制使用prepareId作为parentId: ${prepareId}，忽略传入的parentId: ${parentId}`);
+        if (parentId) {
+          // 检查parentId是否符合UUID格式
+          if (uuidRegex.test(parentId)) {
+            // 如果parentId是UUID格式的有效ID，则直接使用
+            actualParentId = parentId;
+            console.log(`使用传入的有效parentId: ${parentId}`);
+          } else if (parentId.length > 20) {
+            // 如果parentId长度超过20且不是UUID格式，很可能是fileToken而不是ID
+            console.log(`检测到parentId可能是fileToken，而不是图片ID: ${parentId}`);
+            // 使用prepareId替代
+            actualParentId = prepareId;
+            console.log(`使用prepareId作为parentId替代: ${prepareId}`);
+          } else {
+            // 不符合UUID但也不像fileToken的情况，保守处理，使用prepareId
+            actualParentId = prepareId;
+            console.log(`传入的parentId格式无法识别: ${parentId}，使用prepareId: ${prepareId}`);
+          }
+        } else {
+          // 如果没有parentId，才使用prepareId
+          actualParentId = prepareId;
+          console.log(`没有传入parentId，使用prepareId作为parentId: ${prepareId}`);
+        }
         
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
@@ -344,20 +360,7 @@ export async function POST(req: NextRequest) {
         
         console.log(`图片上传到飞书成功，获取到fileToken: ${uploadResult.fileToken}`);
         
-        // 记录最终的ID关系，但不再进行验证或修改
-        console.log(`保存图片记录前的ID关系:`);
-        console.log(`- 新图片ID: ${id}`);
-        console.log(`- 父图片ID (actualParentId): ${actualParentId}`);
-        console.log(`- 根父图片ID (actualRootParentId): ${actualRootParentId}`);
-        
-        // 对于上传的图片进行特殊处理
-        if (isUploadedImage) {
-            console.log(`当前是编辑上传图片，确保使用prepareId: ${prepareId}`);  
-            // 对于上传的图片，再次确认使用prepareId
-            console.log(`强制确认使用prepareId作为parentId: ${prepareId}`);
-        }
-        
-        // 2. 保存记录到飞书数据库  
+        // 2. 保存记录到飞书数据库
         const saveResult = await saveImageRecord({
           id: id,
           url: uploadResult.url,
@@ -370,7 +373,6 @@ export async function POST(req: NextRequest) {
         });
         
         console.log(`图片记录已保存到飞书数据库，记录ID: ${saveResult.record_id || '未知'}`);
-        console.log(`保存的ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
         
         // 返回成功响应，包含base64图片数据和飞书文件信息
         return NextResponse.json({

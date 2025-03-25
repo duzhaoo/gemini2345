@@ -322,32 +322,6 @@ export function ChatInterface({
       const prepareData = prepareResult.data;
       
       // 执行编辑
-      console.log(`准备编辑图片, currentImageId=${currentImageId}, 确保使用正确的parentId`);
-      console.log(`prepareData: prepareId=${prepareData.prepareId}, fileToken=${prepareData.fileToken}, rootParentId=${prepareData.rootParentId}`);
-      
-      // 对于上传图片，确保使用图片ID而不是fileToken作为parentId
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isValidId = currentImageId && uuidRegex.test(currentImageId);
-      
-      if (!isValidId) {
-        console.error(`当前图片ID格式无效: ${currentImageId}`);
-      }
-      
-      // 查看当前参数，避免使用fileToken作为parentId
-      console.log(`编辑请求前检查参数:`); 
-      console.log(`- currentImageId: ${currentImageId}`); 
-      console.log(`- prepareData.prepareId: ${prepareData.prepareId}`); 
-      console.log(`- prepareData.fileToken: ${prepareData.fileToken}`); 
-      console.log(`- prepareData.rootParentId: ${prepareData.rootParentId}`); 
-      
-      // 可能的问题：currentImageId是fileToken而不是图片ID
-      // 如果currentImageId是长字符串，可能是fileToken
-      const isCurrentIdFileToken = currentImageId && (currentImageId.length > 20 || !isValidId);
-      
-      if (isCurrentIdFileToken) {
-        console.warn(`警告: currentImageId可能是fileToken: ${currentImageId}`);
-      }
-      
       const executeResponse = await fetch("/api/edit-execute", {
         method: "POST",
         headers: {
@@ -357,9 +331,8 @@ export function ChatInterface({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
-          // 始终用prepareId作为parentId，避免使用可能是fileToken的currentImageId
-          parentId: prepareData.prepareId, 
-          rootParentId: prepareData.rootParentId || prepareData.prepareId, // 如果没有rootParentId，则使用prepareId
+          parentId: currentImageId,
+          rootParentId: prepareData.rootParentId,
           isUploadedImage: prepareData.isUploadedImage
         }),
       });
