@@ -72,13 +72,6 @@ async function getImageMetadataFromFeishu(imageId: string) {
   };
 }
 
-const validateParentId = (parentId: string) => {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(parentId)) {
-    throw new Error(`无效的parentId格式: ${parentId}`);
-  }
-};
-
 export async function POST(req: NextRequest) {
   try {
     // 解析请求数据
@@ -217,9 +210,6 @@ export async function POST(req: NextRequest) {
       
       
       console.log(`准备编辑图片: 使用当前图片ID=${imageId}, fileToken=${currentFileToken}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
-      
-      // 验证parentId格式
-      validateParentId(actualParentId);
       
       // 返回准备结果
       return NextResponse.json({
