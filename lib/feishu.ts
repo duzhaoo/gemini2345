@@ -206,6 +206,31 @@ export async function saveImageRecord(metadata: {
     const token = await getAccessToken();
     console.log(`saveImageRecord: 获取飞书访问令牌成功`);
     
+    // 验证parentId和rootParentId，确保不是fileToken
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    // 如果parentId是大于20个字符的字符串，或不符合UUID格式，可能是fileToken
+    const isParentIdInvalid = metadata.parentId && 
+      (metadata.parentId.length > 20 || !uuidRegex.test(metadata.parentId));
+    
+    if (isParentIdInvalid) {
+      console.warn(`检测到无效的parentId，可能是fileToken: ${metadata.parentId}`);
+      // 使用自身ID替代
+      metadata.parentId = metadata.id;
+      console.log(`将parentId替换为图片自身ID: ${metadata.id}`);
+    }
+    
+    // 同样检查rootParentId
+    const isRootParentIdInvalid = metadata.rootParentId && 
+      (metadata.rootParentId.length > 20 || !uuidRegex.test(metadata.rootParentId));
+    
+    if (isRootParentIdInvalid) {
+      console.warn(`检测到无效的rootParentId，可能是fileToken: ${metadata.rootParentId}`);
+      // 使用parentId或自身ID替代
+      metadata.rootParentId = metadata.parentId || metadata.id;
+      console.log(`将rootParentId替换为: ${metadata.rootParentId}`);
+    }
+    
     // 确保所有字段都是字符串类型，避免飞书API的类型转换错误
     // 构建请求数据
     const requestData = {
@@ -221,6 +246,7 @@ export async function saveImageRecord(metadata: {
       }
     };
     
+    console.log(`saveImageRecord: ID验证结果 - id=${metadata.id}, parentId=${metadata.parentId}, rootParentId=${metadata.rootParentId}`);
     console.log(`saveImageRecord: 准备保存的数据:`, JSON.stringify(requestData));
     
     // 发送API请求
