@@ -315,28 +315,25 @@ export async function POST(req: NextRequest) {
         // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
-        if (parentId) {
-          // 检查parentId是否符合UUID格式
-          if (uuidRegex.test(parentId)) {
-            // 如果parentId是UUID格式的有效ID，则直接使用
-            actualParentId = parentId;
-            console.log(`使用传入的有效parentId: ${parentId}`);
-          } else if (parentId.length > 20) {
-            // 如果parentId长度超过20且不是UUID格式，很可能是fileToken而不是ID
-            console.log(`检测到parentId可能是fileToken，而不是图片ID: ${parentId}`);
-            // 使用prepareId替代
-            actualParentId = prepareId;
-            console.log(`使用prepareId作为parentId替代: ${prepareId}`);
-          } else {
-            // 不符合UUID但也不像fileToken的情况，保守处理，使用prepareId
-            actualParentId = prepareId;
-            console.log(`传入的parentId格式无法识别: ${parentId}，使用prepareId: ${prepareId}`);
-          }
-        } else {
-          // 如果没有parentId，才使用prepareId
-          actualParentId = prepareId;
-          console.log(`没有传入parentId，使用prepareId作为parentId: ${prepareId}`);
+        // 重要：在编辑图片2时，我们应该使用图片2的ID作为parentId，而不是原始图片的ID
+        // 这里的parentId应该就是prepareId，因为在image-editor-form.tsx中我们已经设置了parentId: prepareData.prepareId
+        
+        // 默认使用prepareId作为parentId，确保编辑链不会断开
+        actualParentId = prepareId;
+        console.log(`使用prepareId作为parentId: ${prepareId}`);
+        
+        // 如果parentId存在且是UUID格式，则使用它
+        if (parentId && uuidRegex.test(parentId)) {
+          actualParentId = parentId;
+          console.log(`使用传入的有效parentId: ${parentId}`);
+        } else if (parentId) {
+          // 如果parentId存在但不是UUID格式，记录日志但仍然使用prepareId
+          console.log(`传入的parentId格式无效: ${parentId}，使用prepareId: ${prepareId}`);
         }
+        
+        // 输出更详细的日志，便于调试
+        console.log(`编辑图片parentId处理: 原始parentId=${parentId}, 实际使用的actualParentId=${actualParentId}`);
+        
         
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);

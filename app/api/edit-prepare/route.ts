@@ -181,35 +181,33 @@ export async function POST(req: NextRequest) {
       
       // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isValidParentId = imageMetadata.parentId && uuidRegex.test(imageMetadata.parentId);
       
       // 如果是对已编辑图片再次编辑，使用当前选中的图片作为编辑基础
       // 而不是使用原始图片
       const currentFileToken = imageMetadata.fileToken;
       
-      // 确保使用正确的parentId和rootParentId
-      // 如果当前图片是原始图片，则parentId和rootParentId都是当前图片ID
-      // 如果当前图片是编辑图片，则保留其parentId和rootParentId
-      let actualParentId = imageId; // 默认使用当前图片ID
+      // 当前图片的ID将作为下一个编辑图片的parentId
+      let actualParentId = imageId; // 当前图片ID
       
-      // 只有当parentId是有效的UUID格式时才使用它
-      if (isValidParentId) {
-        actualParentId = imageMetadata.parentId;
-        console.log(`使用有效的parentId: ${actualParentId}`);
-      } else if (imageMetadata.parentId) {
-        console.log(`检测到无效的parentId: ${imageMetadata.parentId}，可能是fileToken，改用当前图片ID`);
-      }
-      
-      // 同样检查rootParentId的有效性
-      const isValidRootParentId = imageMetadata.rootParentId && uuidRegex.test(imageMetadata.rootParentId);
+      // 对于rootParentId，需要确保它是一个有效的UUID
       let actualRootParentId = imageId; // 默认使用当前图片ID
       
-      if (isValidRootParentId) {
+      // 如果有有效的rootParentId，则使用它
+      if (imageMetadata.rootParentId && uuidRegex.test(imageMetadata.rootParentId)) {
         actualRootParentId = imageMetadata.rootParentId;
         console.log(`使用有效的rootParentId: ${actualRootParentId}`);
       } else if (imageMetadata.rootParentId) {
+        // 如果rootParentId不是UUID格式，可能是fileToken或其他无效值
         console.log(`检测到无效的rootParentId: ${imageMetadata.rootParentId}，改用当前图片ID`);
       }
+      
+      // 检查当前图片的类型，判断是原始上传图片还是生成/编辑图片
+      // 注意：使用imageMetadata中的isUploadedImage属性
+      const isUploadedImage = imageMetadata.isUploadedImage === true;
+      
+      // 输出详细的日志，便于调试
+      console.log(`准备编辑图片: 当前图片ID=${imageId}, fileToken=${currentFileToken}, 实际parentId=${actualParentId}, 实际rootParentId=${actualRootParentId}, 是否上传图片=${isUploadedImage}`);
+      
       
       console.log(`准备编辑图片: 使用当前图片ID=${imageId}, fileToken=${currentFileToken}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
       
@@ -221,7 +219,7 @@ export async function POST(req: NextRequest) {
           fileToken: currentFileToken, // 使用当前选中的图片的fileToken
           parentId: actualParentId, // 传递当前图片的parentId，确保再次编辑时保持parentId一致
           rootParentId: actualRootParentId, // 保留原始的rootParentId
-          isUploadedImage: imageMetadata.isUploadedImage,
+          isUploadedImage: isUploadedImage, // 使用我们之前定义的isUploadedImage变量
           originalUrl: imageUrl
         }
       } as ApiResponse);
