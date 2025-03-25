@@ -179,15 +179,46 @@ export function ImagesWithHistory() {
           rootParentIdToGroupId[uploadedId] = uploadedId;
           console.log(`确保上传图片ID=${uploadedId}映射到自己的组`);
           
+          // 确保上传图片组存在，如果不存在则创建
+          if (!groupsById[uploadedId] && uploadedOriginalImages[uploadedId]) {
+            console.log(`创建上传图片组: ID=${uploadedId}`);
+            groupsById[uploadedId] = {
+              original: uploadedOriginalImages[uploadedId],
+              edits: [],
+              editHistory: []
+            };
+          }
+          
           // 遍历所有组，找到与ID相关的编辑图片
           Object.values(groupsById).forEach(group => {
-            (group.edits || []).forEach(edit => {
+            const editsToMove = [];
+            
+            // 收集需要移动的编辑图片
+            (group.edits || []).forEach((edit, index) => {
               if (edit.parentId === uploadedId || edit.rootParentId === uploadedId) {
                 console.log(`发现编辑图片ID=${edit.id}与上传图片ID=${uploadedId}相关`);
                 // 将编辑图片映射到上传图片的组
                 rootParentIdToGroupId[edit.id] = uploadedId;
+                editsToMove.push(edit);
               }
             });
+            
+            // 将编辑图片移动到上传图片的组
+            if (editsToMove.length > 0 && group.original.id !== uploadedId) {
+              console.log(`将${editsToMove.length}个编辑图片从组${group.original.id}移动到上传图片组${uploadedId}`);
+              
+              // 将编辑图片添加到上传图片组
+              editsToMove.forEach(edit => {
+                if (!groupsById[uploadedId].edits.some(e => e.id === edit.id)) {
+                  groupsById[uploadedId].edits.push(edit);
+                }
+              });
+              
+              // 从原组中移除这些编辑图片
+              group.edits = group.edits.filter(edit => 
+                !editsToMove.some(e => e.id === edit.id)
+              );
+            }
           });
         });
         
@@ -213,14 +244,26 @@ export function ImagesWithHistory() {
           if (groupsForRootId.length > 1) {
             console.log(`发现rootParentId=${rootId}对应多个组: ${groupsForRootId.join(', ')}，需要合并`);    
             
-            // 选择一个目标组（首选类型为上传或生成的，其次选所有组的第一个）
+            // 选择一个目标组
             let targetGroupId = groupsForRootId[0]; // 默认选择第一个
             
-            // 尝试找一个非编辑类型的组作为目标
+            // 优先选择上传类型的组作为目标
             for (const gid of groupsForRootId) {
-              if (groupsById[gid]?.original?.type !== 'edited') {
+              if (groupsById[gid]?.original?.type === 'uploaded') {
                 targetGroupId = gid;
+                console.log(`优先选择上传类型的组 ${gid} 作为目标组`);
                 break;
+              }
+            }
+            
+            // 如果没有上传类型，则尝试找一个非编辑类型的组作为目标
+            if (groupsById[targetGroupId]?.original?.type === 'edited') {
+              for (const gid of groupsForRootId) {
+                if (groupsById[gid]?.original?.type !== 'edited') {
+                  targetGroupId = gid;
+                  console.log(`选择非编辑类型的组 ${gid} 作为目标组`);
+                  break;
+                }
               }
             }
             
@@ -266,28 +309,99 @@ export function ImagesWithHistory() {
         // 确保原始图片(类型为'uploaded')出现在组中
         console.log('第四步：确保所有上传的原始图片都有对应组');
         
+        // 创建一个列表来跟踪已经处理过的上传图片
+        const processedUploadedImages = new Set<string>();
+        
         data.data.imageGroups.forEach(group => {
           if (!group.original || !group.original.id) return;
           
           // 特别检查上传类型的图片
-          if (group.original.type === 'uploaded' && !Object.values(groupsById).some(g => 
-              g.original.id === group.original.id || g.edits.some(e => e.id === group.original.id)
-          )) {
-            // 没有找到这个上传图片，添加回来
-            console.log(`检测到上传图片 ${group.original.id} 没有出现在任何组中，恢复该组`);
+          if (group.original.type === 'uploaded') {
+            const uploadedId = group.original.id;
+            processedUploadedImages.add(uploadedId);
             
-            groupsById[group.original.id] = {
-              original: group.original,
-              edits: [...(group.edits || [])],
-              editHistory: [...(group.editHistory || [])]
-            };
+            // 检查这个上传图片是否已经存在于组中
+            if (!groupsById[uploadedId]) {
+              // 没有找到这个上传图片的组，创建新组
+              console.log(`创建上传图片组: ID=${uploadedId}`);
+              
+              groupsById[uploadedId] = {
+                original: group.original,
+                edits: [],
+                editHistory: []
+              };
+              
+              // 将原始组中的编辑图片移到新组
+              if (group.edits && group.edits.length > 0) {
+                groupsById[uploadedId].edits = [...group.edits];
+              }
+              
+              // 将原始组中的编辑历史移到新组
+              if (group.editHistory && group.editHistory.length > 0) {
+                groupsById[uploadedId].editHistory = [...group.editHistory];
+              }
+            } else {
+              // 已经存在这个上传图片的组，确保它是原始图片
+              console.log(`确保上传图片 ${uploadedId} 是其组的原始图片`);
+              
+              // 如果这个上传图片在编辑图片列表中，将其移动到原始图片位置
+              const editIndex = groupsById[uploadedId].edits.findIndex(e => e.id === uploadedId);
+              if (editIndex >= 0) {
+                console.log(`将上传图片从编辑列表移动到原始图片位置`);
+                const uploadedImage = groupsById[uploadedId].edits.splice(editIndex, 1)[0];
+                
+                // 如果组的原始图片不是上传图片，将其移动到编辑列表
+                if (groupsById[uploadedId].original.id !== uploadedId) {
+                  groupsById[uploadedId].edits.push(groupsById[uploadedId].original);
+                  groupsById[uploadedId].original = uploadedImage;
+                }
+              }
+              
+              // 将原始组中的编辑图片添加到这个组
+              if (group.edits && group.edits.length > 0) {
+                group.edits.forEach(edit => {
+                  if (!groupsById[uploadedId].edits.some(e => e.id === edit.id)) {
+                    groupsById[uploadedId].edits.push(edit);
+                  }
+                });
+              }
+            }
             
             // 设置映射
-            rootParentIdToGroupId[group.original.id] = group.original.id;
+            rootParentIdToGroupId[uploadedId] = uploadedId;
             if (group.original.rootParentId) {
-              rootParentIdToGroupId[group.original.rootParentId] = group.original.id;
+              rootParentIdToGroupId[group.original.rootParentId] = uploadedId;
             }
           }
+        });
+        
+        // 检查是否有上传图片被错误地放在了编辑图片列表中
+        Object.values(groupsById).forEach(group => {
+          const uploadedEdits = group.edits.filter(edit => 
+            edit.type === 'uploaded' && !processedUploadedImages.has(edit.id)
+          );
+          
+          // 如果发现上传图片在编辑列表中，将其移动到自己的组
+          uploadedEdits.forEach(uploadedEdit => {
+            console.log(`发现上传图片 ${uploadedEdit.id} 在组 ${group.original.id} 的编辑列表中`);
+            processedUploadedImages.add(uploadedEdit.id);
+            
+            // 创建一个新组以这个上传图片作为原始图片
+            if (!groupsById[uploadedEdit.id]) {
+              console.log(`创建上传图片组: ID=${uploadedEdit.id}`);
+              groupsById[uploadedEdit.id] = {
+                original: uploadedEdit,
+                edits: [],
+                editHistory: []
+              };
+              
+              // 设置映射
+              rootParentIdToGroupId[uploadedEdit.id] = uploadedEdit.id;
+              
+              // 从原组中移除这个上传图片
+              group.edits = group.edits.filter(edit => edit.id !== uploadedEdit.id);
+            }
+          });
         });
         
         // 为所有图片检查rootParentId并尝试根据映射合并组
