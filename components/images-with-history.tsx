@@ -1095,3 +1095,29 @@ export function ImagesWithHistory() {
     </div>
   );
 }
+
+const buildImageGroups = (images: ImageRecord[]) => { 
+  const groupMap = new Map<string, ImageGroup>(); 
+  
+  images.forEach(image => {
+    const rootParentId = image.rootParentId || image.parentId || image.id; 
+    
+    if (!groupMap.has(rootParentId)) {
+      groupMap.set(rootParentId, { 
+        id: rootParentId, 
+        originalImage: null, 
+        edits: [] 
+      }); 
+    } 
+ 
+    const group = groupMap.get(rootParentId)!; 
+    if (image.type === 'uploaded') { 
+      group.originalImage = image; 
+    } else { 
+      group.edits.push(image); 
+      group.edits.sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp)); 
+    } 
+  }); 
+ 
+  return Array.from(groupMap.values()).filter(group => group.originalImage); 
+};
