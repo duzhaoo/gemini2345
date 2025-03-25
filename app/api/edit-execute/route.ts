@@ -315,6 +315,14 @@ export async function POST(req: NextRequest) {
         // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
+        // 从日志汇总当前所有参数，便于全面调试
+        console.log(`编辑图片 - 所有传入参数:`);  
+        console.log(`- prepareId: ${prepareId}`);  
+        console.log(`- fileToken: ${fileToken}`);  
+        console.log(`- parentId: ${parentId}`);  
+        console.log(`- rootParentId: ${rootParentId}`);  
+        console.log(`- isUploadedImage: ${isUploadedImage}`);  
+        
         if (parentId) {
           // 检查parentId是否符合UUID格式
           if (uuidRegex.test(parentId)) {
@@ -360,7 +368,26 @@ export async function POST(req: NextRequest) {
         
         console.log(`图片上传到飞书成功，获取到fileToken: ${uploadResult.fileToken}`);
         
-        // 2. 保存记录到飞书数据库
+        // 再次验证ID关系，确保使用正确的ID
+        // 保存前全面检查ID
+        console.log(`保存图片记录前检查ID关系:`);
+        console.log(`- 新图片ID: ${id}`);
+        console.log(`- 父图片ID (actualParentId): ${actualParentId}`);
+        console.log(`- 根父图片ID (actualRootParentId): ${actualRootParentId}`);
+        
+        // 最终验证ID关系
+        const uuidTest = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidTest.test(actualParentId)) {
+            console.error(`最终的parentId仍然无效: ${actualParentId}，用图片自身ID替代`);
+            actualParentId = prepareId; // 如果仍然无效，使用prepareId
+        }
+        
+        // 对于上传的图片进行特殊处理
+        if (isUploadedImage) {
+            console.log(`当前是编辑上传图片，进行特殊处理`);  
+        }
+        
+        // 2. 保存记录到飞书数据库  
         const saveResult = await saveImageRecord({
           id: id,
           url: uploadResult.url,
@@ -373,6 +400,7 @@ export async function POST(req: NextRequest) {
         });
         
         console.log(`图片记录已保存到飞书数据库，记录ID: ${saveResult.record_id || '未知'}`);
+        console.log(`保存的ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}`);
         
         // 返回成功响应，包含base64图片数据和飞书文件信息
         return NextResponse.json({

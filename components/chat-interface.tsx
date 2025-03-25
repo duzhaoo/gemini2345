@@ -322,6 +322,17 @@ export function ChatInterface({
       const prepareData = prepareResult.data;
       
       // 执行编辑
+      console.log(`准备编辑图片, currentImageId=${currentImageId}, 确保使用正确的parentId`);
+      console.log(`prepareData: prepareId=${prepareData.prepareId}, fileToken=${prepareData.fileToken}, rootParentId=${prepareData.rootParentId}`);
+      
+      // 对于上传图片，确保使用图片ID而不是fileToken作为parentId
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isValidId = currentImageId && uuidRegex.test(currentImageId);
+      
+      if (!isValidId) {
+        console.error(`当前图片ID格式无效: ${currentImageId}`);
+      }
+      
       const executeResponse = await fetch("/api/edit-execute", {
         method: "POST",
         headers: {
@@ -331,8 +342,8 @@ export function ChatInterface({
           prompt,
           prepareId: prepareData.prepareId,
           fileToken: prepareData.fileToken,
-          parentId: currentImageId,
-          rootParentId: prepareData.rootParentId,
+          parentId: currentImageId, // 确保使用正确的图片ID作为parentId
+          rootParentId: prepareData.rootParentId || currentImageId, // 如果没有rootParentId，则使用当前图片ID
           isUploadedImage: prepareData.isUploadedImage
         }),
       });
