@@ -88,12 +88,44 @@ export function ImagesWithHistory() {
         // 增强类型检查和调试信息
         console.log('开始处理图片组，共 ' + data.data.imageGroups.length + ' 个原始分组');
 
-        // 首先确保所有原始图片首先保存到各自的组中
-        // 添加每个组的原始图片到组列表中
-        console.log('第一步：保存所有原始图片到各自独立的组');
+        // 第一步：首先处理所有上传类型的原始图片
+        console.log('第一步：优先处理所有上传类型的原始图片');
         
         // 创建一个列表来跟踪上传类型的原始图片
         const uploadedOriginalImages: Record<string, ImageItem> = {};
+        const processedIds = new Set<string>(); // 跟踪已处理的ID
+        
+        // 处理所有上传类型的原始图片
+        data.data.imageGroups.forEach((group: ImageGroup, index: number) => {
+          if (!group.original || !group.original.id) return;
+          
+          // 只处理上传类型的原始图片
+          if (group.original.type === 'uploaded') {
+            const uploadedId = group.original.id;
+            uploadedOriginalImages[uploadedId] = group.original;
+            processedIds.add(uploadedId);
+            
+            console.log(`优先处理上传图片: ID=${uploadedId}`);
+            
+            // 创建上传图片组
+            groupsById[uploadedId] = {
+              original: group.original,
+              edits: [],
+              editHistory: []
+            };
+            
+            // 建立ID映射
+            rootParentIdToGroupId[uploadedId] = uploadedId; // 上传图片ID映射到自己的组
+            
+            // 如果有rootParentId，也添加映射
+            if (group.original.rootParentId) {
+              rootParentIdToGroupId[group.original.rootParentId] = uploadedId;
+            }
+          }
+        });
+        
+        // 第二步：处理其他非上传类型的原始图片
+        console.log('第二步：处理非上传类型的原始图片');
         
         data.data.imageGroups.forEach((group: ImageGroup, index: number) => {
           if (!group.original || !group.original.id) {
@@ -102,12 +134,49 @@ export function ImagesWithHistory() {
           }
           
           const groupId = group.original.id;
+          
+          // 跳过已处理的上传图片
+          if (processedIds.has(groupId)) {
+            return;
+          }
+          
           const rootId = group.original.rootParentId || groupId;
           
           // 打印原始图片的类型和信息，帮助调试
-          console.log(`准备创建组 ${index}, ID=${groupId}, 原始图片类型=${group.original.type || '未知类型'}, rootParentId=${rootId}`);
+          console.log(`处理非上传图片组 ${index}, ID=${groupId}, 类型=${group.original.type || '未知类型'}, rootParentId=${rootId}`);
           
-          // 设置每个组的准备数据
+          // 检查这个图片的rootParentId是否指向一个上传图片
+          if (rootId && uploadedOriginalImages[rootId]) {
+            console.log(`发现非上传图片 ${groupId} 的rootParentId指向上传图片 ${rootId}`);
+            
+            // 将这个图片添加到上传图片的组中
+            if (!groupsById[rootId].edits.some(e => e.id === group.original.id)) {
+              groupsById[rootId].edits.push(group.original);
+            }
+            
+            // 将这个图片的编辑图片也添加到上传图片组
+            (group.edits || []).forEach(edit => {
+              if (!groupsById[rootId].edits.some(e => e.id === edit.id)) {
+                groupsById[rootId].edits.push(edit);
+              }
+            });
+            
+            // 将这个图片的编辑历史也添加到上传图片组
+            (group.editHistory || []).forEach(history => {
+              if (!groupsById[rootId].editHistory.some(h => h.id === history.id)) {
+                groupsById[rootId].editHistory.push(history);
+              }
+            });
+            
+            // 建立ID映射
+            rootParentIdToGroupId[groupId] = rootId;
+            processedIds.add(groupId);
+            
+            // 跳过创建这个组
+            return;
+          }
+          
+          // 如果不属于上传图片组，则创建自己的组
           groupsById[groupId] = {
             original: group.original,
             edits: [...(group.edits || [])],
@@ -116,23 +185,15 @@ export function ImagesWithHistory() {
           
           // 建立ID映射
           rootParentIdToGroupId[groupId] = groupId; // 图片ID映射到自己的组
-          
-          // 特别跟踪上传类型的原始图片
-          if (group.original.type === 'uploaded') {
-            uploadedOriginalImages[groupId] = group.original;
-            console.log(`记录上传类型的原始图片: ID=${groupId}`);
-          }
+          processedIds.add(groupId);
           
           // 如果有rootParentId，也添加映射
           if (rootId !== groupId) {
-            // 注意：这里不覆盖现有映射，后面会处理合并
-            if (!rootParentIdToGroupId[rootId]) {
-              rootParentIdToGroupId[rootId] = groupId;
-            }
+            rootParentIdToGroupId[rootId] = groupId;
           }
         });
         
-        console.log('第二步：处理编辑图片的映射关系');
+        console.log('第三步：处理所有编辑图片的映射关系');
         // 遍历所有组，并完成编辑图片的映射
         data.data.imageGroups.forEach((group: ImageGroup, index: number) => {
           if (!group.original || !group.original.id) return;
@@ -142,46 +203,59 @@ export function ImagesWithHistory() {
           // 处理所有编辑图片
           const edits = Array.isArray(group.edits) ? group.edits : [];
           edits.forEach(edit => {
-            // 确保每个编辑图片的ID都被映射
-            rootParentIdToGroupId[edit.id] = groupId;
-            
-            // 特别处理上传图片的编辑图片
-            // 检查这个编辑图片的parentId是否对应一个上传类型的原始图片
-            if (edit.parentId && uploadedOriginalImages[edit.parentId]) {
-              console.log(`发现编辑图片(ID=${edit.id})的parentId(${edit.parentId})是一个上传类型的原始图片`);
-              // 将这个编辑图片映射到原始图片的组
-              rootParentIdToGroupId[edit.id] = edit.parentId;
+            // 跳过已处理的图片
+            if (processedIds.has(edit.id)) {
+              return;
             }
             
-            // 如果编辑图片有rootParentId，记录下来
-            if (edit.rootParentId) {
-              // 如果rootParentId对应一个上传类型的原始图片，优先使用该映射
-              if (uploadedOriginalImages[edit.rootParentId]) {
-                console.log(`发现编辑图片(ID=${edit.id})的rootParentId(${edit.rootParentId})是一个上传类型的原始图片`);
-                rootParentIdToGroupId[edit.id] = edit.rootParentId;
-                rootParentIdToGroupId[edit.rootParentId] = edit.rootParentId;
-              } else if (!rootParentIdToGroupId[edit.rootParentId]) {
-                rootParentIdToGroupId[edit.rootParentId] = groupId;
+            // 检查这个编辑图片的rootParentId或parentId是否指向一个上传图片
+            const editRootId = edit.rootParentId || edit.parentId || groupId;
+            
+            if (uploadedOriginalImages[editRootId]) {
+              // 如果编辑图片的rootParentId指向上传图片
+              console.log(`发现编辑图片(ID=${edit.id})的rootParentId/parentId(${editRootId})指向上传图片`);
+              
+              // 将这个编辑图片添加到上传图片的组中
+              if (!groupsById[editRootId].edits.some(e => e.id === edit.id)) {
+                groupsById[editRootId].edits.push(edit);
               }
+              
+              // 建立ID映射
+              rootParentIdToGroupId[edit.id] = editRootId;
+              processedIds.add(edit.id);
+            } else if (edit.parentId && uploadedOriginalImages[edit.parentId]) {
+              // 如果编辑图片的parentId指向上传图片
+              console.log(`发现编辑图片(ID=${edit.id})的parentId(${edit.parentId})指向上传图片`);
+              
+              // 将这个编辑图片添加到上传图片的组中
+              if (!groupsById[edit.parentId].edits.some(e => e.id === edit.id)) {
+                groupsById[edit.parentId].edits.push(edit);
+              }
+              
+              // 建立ID映射
+              rootParentIdToGroupId[edit.id] = edit.parentId;
+              processedIds.add(edit.id);
+            } else {
+              // 如果不属于上传图片组，则映射到原始组
+              rootParentIdToGroupId[edit.id] = groupId;
             }
           });
         });
         
-        console.log('第三步：根据rootParentId合并相关图片组');
+        console.log('第四步：最终处理和清理组关系');
         
-        // 创建一个rootParentId到具有相同rootParentId的图片组数组的映射
-        const groupsByRootParentId: Record<string, string[]> = {};
+        // 最终检查：确保所有编辑图片都在正确的组中
+        console.log('最终检查：确保所有编辑图片都在正确的组中');
         
-        // 特别处理上传图片的映射关系
-        console.log('额外检查：特别处理上传图片的映射关系');
+        // 特别处理上传图片的相关编辑图片
         Object.keys(uploadedOriginalImages).forEach(uploadedId => {
           // 确保所有上传图片的组ID就是图片自身的ID
           rootParentIdToGroupId[uploadedId] = uploadedId;
           console.log(`确保上传图片ID=${uploadedId}映射到自己的组`);
           
           // 确保上传图片组存在，如果不存在则创建
-          if (!groupsById[uploadedId] && uploadedOriginalImages[uploadedId]) {
-            console.log(`创建上传图片组: ID=${uploadedId}`);
+          if (!groupsById[uploadedId]) {
+            console.log(`创建缺失的上传图片组: ID=${uploadedId}`);
             groupsById[uploadedId] = {
               original: uploadedOriginalImages[uploadedId],
               edits: [],
@@ -189,40 +263,81 @@ export function ImagesWithHistory() {
             };
           }
           
-          // 遍历所有组，找到与ID相关的编辑图片
-          Object.values(groupsById).forEach(group => {
-            const editsToMove = [];
+          // 遍历所有组，找到与这个上传图片相关的编辑图片
+          Object.entries(groupsById).forEach(([otherGroupId, otherGroup]) => {
+            // 跳过自身组和空组
+            if (otherGroupId === uploadedId || !otherGroup || !otherGroup.original) return;
             
-            // 收集需要移动的编辑图片
-            (group.edits || []).forEach((edit, index) => {
-              if (edit.parentId === uploadedId || edit.rootParentId === uploadedId) {
-                console.log(`发现编辑图片ID=${edit.id}与上传图片ID=${uploadedId}相关`);
-                // 将编辑图片映射到上传图片的组
-                rootParentIdToGroupId[edit.id] = uploadedId;
-                editsToMove.push(edit);
-              }
-            });
-            
-            // 将编辑图片移动到上传图片的组
-            if (editsToMove.length > 0 && group.original.id !== uploadedId) {
-              console.log(`将${editsToMove.length}个编辑图片从组${group.original.id}移动到上传图片组${uploadedId}`);
+            // 检查原始图片的关系
+            if (otherGroup.original.parentId === uploadedId || otherGroup.original.rootParentId === uploadedId) {
+              console.log(`发现原始图片ID=${otherGroup.original.id}与上传图片ID=${uploadedId}相关`);
               
-              // 将编辑图片添加到上传图片组
-              editsToMove.forEach(edit => {
+              // 将这个原始图片添加到上传图片组的编辑图片中
+              if (!groupsById[uploadedId].edits.some(e => e.id === otherGroup.original.id)) {
+                groupsById[uploadedId].edits.push(otherGroup.original);
+              }
+              
+              // 将这个组的所有编辑图片也添加到上传图片组
+              (otherGroup.edits || []).forEach(edit => {
                 if (!groupsById[uploadedId].edits.some(e => e.id === edit.id)) {
                   groupsById[uploadedId].edits.push(edit);
                 }
+                rootParentIdToGroupId[edit.id] = uploadedId;
+              });
+              
+              // 将这个组的编辑历史也添加到上传图片组
+              (otherGroup.editHistory || []).forEach(history => {
+                if (!groupsById[uploadedId].editHistory.some(h => h.id === history.id)) {
+                  groupsById[uploadedId].editHistory.push(history);
+                }
+              });
+              
+              // 标记这个组已处理，后面会删除
+              delete groupsById[otherGroupId];
+            }
+            
+            // 检查组中的所有编辑图片
+            const editsToMove = [];
+            (otherGroup.edits || []).forEach(edit => {
+              if ((edit.parentId === uploadedId || edit.rootParentId === uploadedId) && 
+                  !groupsById[uploadedId].edits.some(e => e.id === edit.id)) {
+                console.log(`发现编辑图片ID=${edit.id}与上传图片ID=${uploadedId}相关`);
+                editsToMove.push(edit);
+                rootParentIdToGroupId[edit.id] = uploadedId;
+              }
+            });
+            
+            // 将相关的编辑图片移动到上传图片组
+            if (editsToMove.length > 0) {
+              console.log(`将${editsToMove.length}个编辑图片从组${otherGroupId}移动到上传图片组${uploadedId}`);
+              editsToMove.forEach(edit => {
+                groupsById[uploadedId].edits.push(edit);
               });
               
               // 从原组中移除这些编辑图片
-              group.edits = group.edits.filter(edit => 
+              otherGroup.edits = otherGroup.edits.filter(edit => 
                 !editsToMove.some(e => e.id === edit.id)
               );
             }
           });
         });
         
+        // 最后清理空组
+        const groupIdsToDelete = [];
+        Object.entries(groupsById).forEach(([groupId, group]) => {
+          if (!group || !group.original) {
+            groupIdsToDelete.push(groupId);
+          }
+        });
+        
+        groupIdsToDelete.forEach(groupId => {
+          console.log(`删除空组: ID=${groupId}`);
+          delete groupsById[groupId];
+        });
+        
         // 收集所有rootParentId对应的组
+        const groupsByRootParentId: Record<string, string[]> = {};
+        
         Object.keys(rootParentIdToGroupId).forEach(id => {
           if (id.includes('-')) { // 只处理UUID形式的ID，这大多是rootParentId
             const targetGroupId = rootParentIdToGroupId[id];
@@ -516,12 +631,8 @@ export function ImagesWithHistory() {
           });
         });
         
-        console.log('第一阶段: 已完成原始图片组的构建和映射初始化');
+        console.log('已完成所有图片组的处理和映射');
         console.log('当前映射表中有 ' + Object.keys(rootParentIdToGroupId).length + ' 个ID映射');
-        
-
-        
-
         
         // 转换为数组并过滤掉无效的组
         const validatedGroups: ImageGroup[] = Object.values(groupsById)
