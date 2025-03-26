@@ -341,17 +341,22 @@ export function ImageEditorForm({
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>编辑图像</CardTitle>
+    <Card className="w-full shadow-md border-0">
+      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-lg pb-2">
+        <CardTitle className="text-xl font-bold text-gray-800 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+          编辑图像
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <div className="grid w-full gap-4">
           <div className="flex flex-col space-y-2">
             {readOnlyUrl ? (
                 <>
-                  <Label>使用图像</Label>
-                  <div className="relative aspect-video w-full overflow-hidden rounded-md border">
+                  <Label className="text-sm font-medium text-gray-700">使用图像</Label>
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-gray-50 shadow-inner">
                     {previewUrl && (
                       <img
                         src={previewUrl.startsWith('https://open.feishu.cn') 
@@ -366,17 +371,17 @@ export function ImageEditorForm({
                       />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-gray-500 italic">
                     正在使用您刚才生成的图像进行编辑。
                   </p>
                 </>
               ) : (
                 <>
-                  <Label>选择图像</Label>
+                  <Label className="text-sm font-medium text-gray-700">选择图像</Label>
                   <div className="grid gap-2">
                     {/* 图片预览区域 */}
                     <div 
-                      className="relative aspect-video w-full overflow-hidden rounded-md border border-dashed flex items-center justify-center"
+                      className="relative aspect-video w-full overflow-hidden rounded-lg border border-dashed border-purple-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors duration-200 cursor-pointer"
                       onClick={handleSelectFileClick}
                     >
                       {previewUrl ? (
@@ -393,8 +398,8 @@ export function ImageEditorForm({
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center p-4">
-                          <ImageIcon className="h-10 w-10 mb-2 text-primary" />
-                          <p className="text-xl font-medium text-primary border border-primary rounded-md px-4 py-2">选择图片</p>
+                          <ImageIcon className="h-12 w-12 mb-3 text-purple-500 opacity-70" />
+                          <p className="text-md font-medium text-purple-600 border border-purple-300 rounded-full px-4 py-1 bg-purple-50 hover:bg-purple-100 transition-colors duration-200 shadow-sm">点击选择图片</p>
                         </div>
                       )}
                     </div>
@@ -425,8 +430,6 @@ export function ImageEditorForm({
                         className="flex-1"
                       />
                     </div>
-                    
-                    {/* 删除大的上传按钮 */}
                   </div>
                 </>
               )}
@@ -434,42 +437,57 @@ export function ImageEditorForm({
 
             
             {/* 编辑指令输入框 */}
-            <div className="flex flex-col space-y-2 mt-2">
-              <Label htmlFor="prompt">编辑指令</Label>
+            <div className="flex flex-col space-y-2 mt-4">
+              <Label htmlFor="prompt" className="text-sm font-medium text-gray-700">编辑指令</Label>
               <Textarea
                 id="prompt"
                 placeholder="请描述您想要如何编辑图像..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="min-h-[100px]"
+                className="min-h-[100px] border-gray-300 focus:border-purple-500 focus:ring-purple-500 rounded-md resize-none"
                 disabled={isLoading}
               />
             </div>
             
             {error && (
-              <div className="text-sm text-red-500 rounded p-2 bg-red-50 border border-red-200">
-                <p className="font-semibold">错误：</p>
+              <div className="text-sm text-red-500 rounded-lg p-3 bg-red-50 border border-red-200 mt-2 animate-in fade-in">
+                <p className="font-semibold flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  错误：
+                </p>
                 <p>{error}</p>
                 {error.includes('速率限制') && (
-                  <p className="mt-2">提示：如果您频繁遇到速率限制，可以尝试稍后再试。</p>
+                  <p className="mt-2 text-xs text-gray-600 bg-gray-100 p-2 rounded">提示：如果您频繁遇到速率限制，可以尝试稍后再试。</p>
                 )}
               </div>
             )}
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2">
+        <CardFooter className="bg-gray-50 rounded-b-lg pt-2 flex flex-col gap-2">
           <Button 
             type="button" 
             onClick={handleEdit} 
             disabled={isLoading || (!imageUrl && !selectedFile) || !prompt.trim()} 
-            className="w-full"
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium py-2 rounded-md transition-all duration-200 shadow-sm"
           >
             {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                 正在编辑...
-              </>
-            ) : "编辑图片"}
+              </span>
+            ) : (
+              <span className="flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                编辑图片
+              </span>
+            )}
           </Button>
           
           {/* 保存到飞书按钮 */}
@@ -479,27 +497,33 @@ export function ImageEditorForm({
                   onClick={handleSaveToFeishu} 
                   disabled={isSaving || isSaved}
                   variant={isSaved ? "outline" : "secondary"}
-                  className="w-full"
+                  className={`w-full transition-all duration-300 ${isSaved ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'}`}
                 >
                   {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
                       保存中...
-                    </>
+                    </span>
                   ) : isSaved ? (
-                    <>
-                      <CheckCircle className="mr-2 h-4 w-4" />
+                    <span className="flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                       已保存
-                    </>
+                    </span>
                   ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
+                    <span className="flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                      </svg>
                       保存图片
-                    </>
+                    </span>
                   )}
                 </Button>
               )}
-          
         </CardFooter>
     </Card>
   );
