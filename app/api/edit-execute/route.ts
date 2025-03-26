@@ -288,53 +288,50 @@ export async function POST(req: NextRequest) {
         // 输出原始参数，便于调试
         console.log(`原始参数: prepareId=${prepareId}, parentId=${parentId}, rootParentId=${rootParentId}`);
         
-        // 对rootParentId进行更严格的处理
-        // 如果有rootParentId，则使用它
-        // 如果没有rootParentId但有parentId，则需要检查parentId是否就是根图片
-        // 如果都没有，才使用prepareId
-        let actualRootParentId = rootParentId;
-        if (!actualRootParentId) {
-          if (parentId && parentId === prepareId) {
-            // 如果parentId和prepareId相同，说明当前图片就是原始图片
-            // 则将原始图片ID作为rootParentId
-            actualRootParentId = parentId;
-            console.log(`没有rootParentId，parentId和prepareId相同，使用parentId作为rootParentId: ${parentId}`);
-          } else {
-            // 如果都没有，才使用prepareId
-            actualRootParentId = prepareId;
-            console.log(`没有rootParentId，使用prepareId作为rootParentId: ${prepareId}`);
-          }
-        } else {
-          console.log(`使用传入的rootParentId: ${rootParentId}`);
-        }
-        
-        // 对parentId进行更严格的处理
-        // 验证parentId不是fileToken
-        let actualParentId = parentId;
-        
-        // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
+        // 对parentId和rootParentId进行更严格的处理
+        // 验证ID不是fileToken，确保是UUID格式
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
-        // 修改：不再总是默认使用prepareId作为parentId
-        // 而是根据isUploadedImage来判断
+        // 初始化实际使用的ID变量
+        let actualParentId = parentId;
+        let actualRootParentId = rootParentId;
+        
+        // 根据图片类型来确定parentId和rootParentId
         if (isUploadedImage) {
-          // 如果当前编辑的是上传图片，则使用prepareId作为parentId
+          // 如果当前编辑的是上传图片，则使用prepareId作为parentId和rootParentId
           // 这样编辑链的起点就是原始上传图片
           actualParentId = prepareId;
-          console.log(`编辑的是上传图片，使用prepareId作为parentId: ${prepareId}`);
+          actualRootParentId = prepareId;
+          console.log(`编辑的是上传图片，使用prepareId作为parentId和rootParentId: ${prepareId}`);
         } else if (parentId && uuidRegex.test(parentId)) {
           // 如果不是上传图片，且传入的parentId是有效的UUID，则使用它
           actualParentId = parentId;
           console.log(`使用传入的有效parentId: ${parentId}`);
+          
+          // 对于非上传图片，优先使用传入的rootParentId
+          if (rootParentId && uuidRegex.test(rootParentId)) {
+            actualRootParentId = rootParentId;
+            console.log(`使用传入的有效rootParentId: ${rootParentId}`);
+          } else if (prepareId) {
+            // 如果没有有效的rootParentId，尝试使用prepareId
+            actualRootParentId = prepareId;
+            console.log(`没有有效的rootParentId，使用prepareId: ${prepareId}`);
+          }
         } else {
-          // 其他情况下使用prepareId
+          // 其他情况下使用prepareId作为parentId
           actualParentId = prepareId;
           console.log(`使用prepareId作为parentId: ${prepareId}`);
+          
+          // 如果没有有效的rootParentId，也使用prepareId
+          if (!rootParentId || !uuidRegex.test(rootParentId)) {
+            actualRootParentId = prepareId;
+            console.log(`没有有效的rootParentId，使用prepareId: ${prepareId}`);
+          }
         }
         
         // 输出更详细的日志，便于调试
         console.log(`编辑图片parentId处理: 原始parentId=${parentId}, 实际使用的actualParentId=${actualParentId}`);
-        
+        console.log(`编辑图片rootParentId处理: 原始rootParentId=${rootParentId}, 实际使用的actualRootParentId=${actualRootParentId}`);
         
         // 添加日志输出，便于调试ID关系
         console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
