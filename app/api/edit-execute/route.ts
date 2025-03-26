@@ -367,7 +367,7 @@ export async function POST(req: NextRequest) {
           timestamp: timestamp,
           parentId: actualParentId,
           rootParentId: actualRootParentId,
-          type: "generated"
+          type: "edited"  
         });
         
         console.log(`图片记录已保存到飞书数据库，记录ID: ${saveResult.record_id || '未知'}`);

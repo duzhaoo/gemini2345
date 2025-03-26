@@ -139,13 +139,62 @@ export async function GET(req: NextRequest) {
           console.log(`上传图片 ${formattedImg.id} 有rootParentId=${img.rootParentId}，更新映射关系`);
         }
       }
-      // 2. 如果有rootParentId，优先使用rootParentId对应的组ID
+      // 2. 如果图片类型是"generated"，则它是文字生成的图片，也是一个组的起点
+      else if (img.type === "generated") {
+        assignedGroupId = img.id;
+        originalImageCount++;
+        console.log(`发现文字生成图片 #${originalImageCount}: ${formattedImg.id}, 提示词="${formattedImg.prompt}"`);
+        
+        // 确保这个生成图片ID被映射到自己的组ID
+        rootParentIdToGroupId[img.id] = img.id;
+        console.log(`文字生成图片 ${formattedImg.id} 映射到自身组ID`);
+        
+        // 如果这个生成图片有rootParentId，也更新映射
+        if (img.rootParentId) {
+          rootParentIdToGroupId[img.rootParentId] = img.id;
+          console.log(`文字生成图片 ${formattedImg.id} 有rootParentId=${img.rootParentId}，更新映射关系`);
+        }
+      }
+      // 3. 如果图片类型是"edited"，则它是编辑后的图片，需要关联到原始图片
+      else if (img.type === "edited") {
+        // 编辑结果图片
+        editedImageCount++;
+        
+        // 优先使用rootParentId确定组ID
+        if (img.rootParentId && rootParentIdToGroupId[img.rootParentId]) {
+          assignedGroupId = rootParentIdToGroupId[img.rootParentId];
+          console.log(`编辑图片 #${editedImageCount}: ${formattedImg.id} 使用已有的rootParentId映射: ${img.rootParentId} -> ${assignedGroupId}`);
+        }
+        // 如果没有rootParentId映射，但有parentId映射
+        else if (img.parentId && rootParentIdToGroupId[img.parentId]) {
+          assignedGroupId = rootParentIdToGroupId[img.parentId];
+          console.log(`编辑图片 #${editedImageCount}: ${formattedImg.id} 使用parentId映射: ${img.parentId} -> ${assignedGroupId}`);
+        }
+        // 如果都没有映射，但有rootParentId
+        else if (img.rootParentId) {
+          assignedGroupId = img.rootParentId;
+          rootParentIdToGroupId[img.rootParentId] = assignedGroupId;
+          console.log(`编辑图片 #${editedImageCount}: ${formattedImg.id} 创建新的rootParentId映射: ${img.rootParentId} -> ${assignedGroupId}`);
+        }
+        // 如果都没有，使用parentId
+        else if (img.parentId) {
+          assignedGroupId = img.parentId;
+          rootParentIdToGroupId[img.id] = assignedGroupId;
+          console.log(`编辑图片 #${editedImageCount}: ${formattedImg.id} 使用parentId作为组ID: ${img.parentId}`);
+        }
+        // 最后的情况，使用自己的ID
+        else {
+          assignedGroupId = img.id;
+          console.log(`编辑图片 #${editedImageCount}: ${formattedImg.id} 没有关联ID，使用自己的ID作为组ID`);
+        }
+      }
+      // 4. 如果有rootParentId，优先使用rootParentId对应的组ID
       else if (img.rootParentId && rootParentIdToGroupId[img.rootParentId]) {
         // 如果有rootParentId并且已经有映射到组ID
         assignedGroupId = rootParentIdToGroupId[img.rootParentId];
         console.log(`使用rootParentId=${img.rootParentId}确定图片${img.id}应放入组${assignedGroupId}`);
       } 
-      // 3. 如果没有parentId，则可能是原始图片（但不是上传图片）
+      // 5. 如果没有parentId，则可能是原始图片（但不是上传图片）
       else if (!img.parentId) {
         // 原始图片，直接以id作为组ID
         originalImageCount++;
@@ -158,7 +207,7 @@ export async function GET(req: NextRequest) {
           console.log(`原始图片 ${formattedImg.id} 有rootParentId=${img.rootParentId}，更新映射关系`);
         }
       }
-      // 4. 编辑图片，使用rootParentId或parentId
+      // 6. 编辑图片，使用rootParentId或parentId
       else {
         // 编辑结果图片
         editedImageCount++;
@@ -470,69 +519,6 @@ export async function GET(req: NextRequest) {
         return group;
       });
     
-    // 处理没有正确分组的图片
-    console.log('\n检查二次编辑图片是否都正确显示...');
-    
-    // 创建编辑图片ID到组ID的映射
-    const editToGroupMap = {};
-    for (const groupId in imageGroups) {
-      const group = imageGroups[groupId];
-      group.edits.forEach(edit => {
-        editToGroupMap[edit.id] = groupId;
-      });
-    }
-    
-    // 检查所有图片，找出没有被分组的编辑图片
-    const unassignedImages = [];
-    for (const img of allImages) {
-      if (!img || !img.id) continue;
-      if (!img.parentId) continue; // 只检查编辑图片
-      
-      // 检查这个编辑图片是否已经分组
-      if (!editToGroupMap[img.id]) {
-        unassignedImages.push(img);
-        console.log(`发现未分组的图片: ${img.id}, parentId=${img.parentId}, rootParentId=${img.rootParentId || '无'}`);
-      }
-    }
-    
-    console.log(`发现 ${unassignedImages.length} 张未分组的编辑图片`);
-    
-    // 修复图片组
-    for (const img of unassignedImages) {
-      // 优先级 1: 先查找是否有rootParentId对应的组 - 这是最优先的选择
-      if (img.rootParentId && imageGroups[img.rootParentId]) {
-        console.log(`优先分组: 根据rootParentId将未分组的图片 ${img.id} 添加到组 ${img.rootParentId}`);
-        imageGroups[img.rootParentId].edits.push(img);
-        console.log(`  图片详情: ID=${img.id}, 父ID=${img.parentId}, 根父ID=${img.rootParentId}`);
-        continue;
-      }
-      
-      // 优先级 2: 再查找是否有parentId对应的组
-      if (imageGroups[img.parentId]) {
-        console.log(`二级分组: 根据parentId将未分组的图片 ${img.id} 添加到组 ${img.parentId}`);
-        imageGroups[img.parentId].edits.push(img);
-        console.log(`  图片详情: ID=${img.id}, 父ID=${img.parentId}, 根父ID=${img.rootParentId || '无'}`);
-        continue;
-      }
-      
-      // 如果未能找到合适的组，创建一个新组
-      console.log(`无法找到适合的组，为图片 ${img.id} 创建新组`);
-      imageGroups[img.id] = {
-        original: null,  // 初始为空
-        edits: [img],   // 将当前图片添加到编辑列表
-        editHistory: []
-      };
-      
-      // 检查是否可以找到对应的原始图片
-      for (const origImg of allImages) {
-        if (origImg.id === img.parentId || origImg.id === img.rootParentId) {
-          console.log(`为新组 ${img.id} 找到了原始图片 ${origImg.id}`);
-          imageGroups[img.id].original = origImg;
-          break;
-        }
-      }
-    }
-    
     // 生成统计数据
     const stats = {
       originalImages: originalImageCount,
@@ -543,7 +529,7 @@ export async function GET(req: NextRequest) {
       emptyPrompts: emptyPromptCount,
       filteredGroups: Object.keys(imageGroups).length,
       allGroups: Object.keys(imageGroups).length,
-      unassignedImages: unassignedImages.length,
+      unassignedImages: 0,
 
       // editGroupId已移除，不再统计编辑组相关信息
       missingImages: Object.values(imageGroups).reduce((count, group) => {
