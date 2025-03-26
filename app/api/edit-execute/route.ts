@@ -282,64 +282,61 @@ export async function POST(req: NextRequest) {
       try {
         console.log("开始将编辑后的图片保存到飞书");
         
-        // 生成唯一ID
-        const id = crypto.randomUUID();
-        
+        // 不再使用UUID生成唯一ID，稍后会使用fileToken
         // 输出原始参数，便于调试
         console.log(`原始参数: prepareId=${prepareId}, parentId=${parentId}, rootParentId=${rootParentId}`);
         
-        // 对parentId和rootParentId进行更严格的处理
-        // 验证ID不是fileToken，确保是UUID格式
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        
-        // 初始化实际使用的ID变量
-        let actualParentId = parentId;
+        // 对rootParentId进行更严格的处理
+        // 如果有rootParentId，则使用它
+        // 如果没有rootParentId但有parentId，则需要检查parentId是否就是根图片
+        // 如果都没有，才使用prepareId
         let actualRootParentId = rootParentId;
-        
-        // 根据图片类型来确定parentId和rootParentId
-        if (isUploadedImage) {
-          // 如果当前编辑的是上传图片，则使用prepareId作为parentId和rootParentId
-          // 这样编辑链的起点就是原始上传图片
-          actualParentId = prepareId;
-          actualRootParentId = prepareId;
-          console.log(`编辑的是上传图片，使用prepareId作为parentId和rootParentId: ${prepareId}`);
-        } else if (parentId && uuidRegex.test(parentId)) {
-          // 如果不是上传图片，且传入的parentId是有效的UUID，则使用它
-          actualParentId = parentId;
-          console.log(`使用传入的有效parentId: ${parentId}`);
-          
-          // 对于非上传图片，优先使用传入的rootParentId
-          if (rootParentId && uuidRegex.test(rootParentId)) {
-            actualRootParentId = rootParentId;
-            console.log(`使用传入的有效rootParentId: ${rootParentId}`);
-          } else if (prepareId) {
-            // 如果没有有效的rootParentId，尝试使用prepareId
+        if (!actualRootParentId) {
+          if (parentId && parentId === prepareId) {
+            // 如果parentId和prepareId相同，说明当前图片就是原始图片
+            // 则将原始图片ID作为rootParentId
+            actualRootParentId = parentId;
+            console.log(`没有rootParentId，parentId和prepareId相同，使用parentId作为rootParentId: ${parentId}`);
+          } else {
+            // 如果都没有，才使用prepareId
             actualRootParentId = prepareId;
-            console.log(`没有有效的rootParentId，使用prepareId: ${prepareId}`);
+            console.log(`没有rootParentId，使用prepareId作为rootParentId: ${prepareId}`);
           }
         } else {
-          // 其他情况下使用prepareId作为parentId
+          console.log(`使用传入的rootParentId: ${rootParentId}`);
+        }
+        
+        // 对parentId进行处理
+        // 不再验证parentId是否为UUID格式
+        let actualParentId = parentId;
+        
+        // 修改：根据isUploadedImage来判断
+        if (isUploadedImage) {
+          // 如果当前编辑的是上传图片，则使用prepareId作为parentId
+          // 这样编辑链的起点就是原始上传图片
+          actualParentId = prepareId;
+          console.log(`编辑的是上传图片，使用prepareId作为parentId: ${prepareId}`);
+        } else if (parentId) {
+          // 如果不是上传图片，且传入了parentId，则使用它
+          actualParentId = parentId;
+          console.log(`使用传入的parentId: ${parentId}`);
+        } else {
+          // 其他情况下使用prepareId
           actualParentId = prepareId;
           console.log(`使用prepareId作为parentId: ${prepareId}`);
-          
-          // 如果没有有效的rootParentId，也使用prepareId
-          if (!rootParentId || !uuidRegex.test(rootParentId)) {
-            actualRootParentId = prepareId;
-            console.log(`没有有效的rootParentId，使用prepareId: ${prepareId}`);
-          }
         }
         
         // 输出更详细的日志，便于调试
         console.log(`编辑图片parentId处理: 原始parentId=${parentId}, 实际使用的actualParentId=${actualParentId}`);
-        console.log(`编辑图片rootParentId处理: 原始rootParentId=${rootParentId}, 实际使用的actualRootParentId=${actualRootParentId}`);
+        
         
         // 添加日志输出，便于调试ID关系
-        console.log(`编辑图片ID关系: 新ID=${id}, parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
+        console.log(`编辑图片ID关系: 新ID=将使用fileToken， parentId=${actualParentId}, rootParentId=${actualRootParentId}, fileToken=${fileToken}`);
         
         // 1. 上传图片到飞书
         console.log(`开始上传图片到飞书存储`);
         const timestamp = Date.now();
-        const fileName = `edited_image_${id}_${timestamp}.png`;
+        const fileName = `edited_image_${timestamp}.png`;
         
         // 上传图片到飞书
         const uploadResult = await uploadImageToFeishu(
@@ -354,6 +351,9 @@ export async function POST(req: NextRequest) {
         }
         
         console.log(`图片上传到飞书成功，获取到fileToken: ${uploadResult.fileToken}`);
+        
+        // 使用fileToken作为图片的唯一ID
+        const id = uploadResult.fileToken;
         
         // 2. 保存记录到飞书数据库
         const saveResult = await saveImageRecord({

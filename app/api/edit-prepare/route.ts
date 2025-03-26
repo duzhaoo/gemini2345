@@ -179,9 +179,7 @@ export async function POST(req: NextRequest) {
       // 输出详细的日志，便于调试
       console.log(`获取到图片元数据: ID=${imageId}, fileToken=${imageMetadata.fileToken}, parentId=${imageMetadata.parentId}, rootParentId=${imageMetadata.rootParentId}, type=${imageMetadata.isUploadedImage ? "uploaded" : "generated"}`);
       
-      // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      
+      // 不再检查ID是否为UUID格式，因为我们现在使用fileToken作为ID
       // 如果是对已编辑图片再次编辑，使用当前选中的图片作为编辑基础
       // 而不是使用原始图片
       const currentFileToken = imageMetadata.fileToken;
@@ -189,21 +187,21 @@ export async function POST(req: NextRequest) {
       // 当前图片的ID将作为下一个编辑图片的parentId
       let actualParentId = imageId; // 当前图片ID
       
-      // 对于rootParentId，需要确保它是一个有效的UUID
-      let actualRootParentId = imageId; // 默认使用当前图片ID
+      // 对于rootParentId，默认使用当前图片ID
+      let actualRootParentId = imageId;
       
       // 改进rootParentId的处理逻辑
       if (imageMetadata.isUploadedImage) {
         // 如果当前图片是上传图片，则它自身就是rootParentId
         actualRootParentId = imageId;
         console.log(`当前图片是上传图片，使用其ID作为rootParentId: ${imageId}`);
-      } else if (imageMetadata.rootParentId && uuidRegex.test(imageMetadata.rootParentId)) {
-        // 如果当前图片不是上传图片，但有有效的rootParentId，则使用它
-        actualRootParentId = imageMetadata.rootParentId;
-        console.log(`使用有效的rootParentId: ${actualRootParentId}`);
       } else if (imageMetadata.rootParentId) {
-        // 如果rootParentId不是UUID格式，可能是fileToken或其他无效值
-        console.log(`检测到无效的rootParentId: ${imageMetadata.rootParentId}，改用当前图片ID`);
+        // 如果当前图片不是上传图片，但有rootParentId，则使用它
+        actualRootParentId = imageMetadata.rootParentId;
+        console.log(`使用已有的rootParentId: ${actualRootParentId}`);
+      } else {
+        // 如果rootParentId不存在
+        console.log(`没有rootParentId，使用当前图片ID: ${imageId}`);
       }
       
       // 检查当前图片的类型，判断是原始上传图片还是生成/编辑图片

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { uploadImageToFeishu, saveImageRecord } from '@/lib/feishu';
 
@@ -37,23 +36,18 @@ export async function POST(request: NextRequest) {
     
     const filename = `${hash}.${extension}`;
     
-    // 为元数据创建唯一ID
-    const id = uuidv4();
+    // 创建基本元数据（暂时使用一个临时ID，后面会用fileToken替换）
     const prompt = formData.get('prompt') as string || "用户上传的原始图片";
     
     // 创建基本元数据
     const metadata: any = {
-      id,
       prompt,
       createdAt: new Date().toISOString(),
       filename,
       mimeType,
       size: buffer.byteLength,
       type: "uploaded", // 标记为用户上传的图片
-      isVercelEnv: isVercelEnvironment,
-      // 确保parentId和rootParentId不为空，使用图片自身id
-      parentId: id,
-      rootParentId: id
+      isVercelEnv: isVercelEnvironment
     };
     
     // 转换为Base64用于上传到飞书
@@ -73,6 +67,14 @@ export async function POST(request: NextRequest) {
       
       console.log('图片已上传到飞书，URL:', fileInfo.url);
       
+      // 使用fileToken作为图片的唯一ID
+      const id = fileInfo.fileToken;
+      
+      // 设置parentId和rootParentId为fileToken
+      metadata.id = id;
+      metadata.parentId = id;
+      metadata.rootParentId = id;
+      
       // 保存记录到飞书多维表格
       const recordInfo = await saveImageRecord({
         id,
@@ -80,8 +82,8 @@ export async function POST(request: NextRequest) {
         fileToken: fileInfo.fileToken,
         prompt,
         timestamp: new Date().getTime(),
-        parentId: metadata.parentId,
-        rootParentId: metadata.rootParentId,
+        parentId: id,  // 使用fileToken作为parentId
+        rootParentId: id,  // 使用fileToken作为rootParentId
         type: metadata.type
       });
       
