@@ -315,20 +315,21 @@ export async function POST(req: NextRequest) {
         // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
-        // 重要：在编辑图片2时，我们应该使用图片2的ID作为parentId，而不是原始图片的ID
-        // 这里的parentId应该就是prepareId，因为在image-editor-form.tsx中我们已经设置了parentId: prepareData.prepareId
-        
-        // 默认使用prepareId作为parentId，确保编辑链不会断开
-        actualParentId = prepareId;
-        console.log(`使用prepareId作为parentId: ${prepareId}`);
-        
-        // 如果parentId存在且是UUID格式，则使用它
-        if (parentId && uuidRegex.test(parentId)) {
+        // 修改：不再总是默认使用prepareId作为parentId
+        // 而是根据isUploadedImage来判断
+        if (isUploadedImage) {
+          // 如果当前编辑的是上传图片，则使用prepareId作为parentId
+          // 这样编辑链的起点就是原始上传图片
+          actualParentId = prepareId;
+          console.log(`编辑的是上传图片，使用prepareId作为parentId: ${prepareId}`);
+        } else if (parentId && uuidRegex.test(parentId)) {
+          // 如果不是上传图片，且传入的parentId是有效的UUID，则使用它
           actualParentId = parentId;
           console.log(`使用传入的有效parentId: ${parentId}`);
-        } else if (parentId) {
-          // 如果parentId存在但不是UUID格式，记录日志但仍然使用prepareId
-          console.log(`传入的parentId格式无效: ${parentId}，使用prepareId: ${prepareId}`);
+        } else {
+          // 其他情况下使用prepareId
+          actualParentId = prepareId;
+          console.log(`使用prepareId作为parentId: ${prepareId}`);
         }
         
         // 输出更详细的日志，便于调试

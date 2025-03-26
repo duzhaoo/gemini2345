@@ -123,26 +123,42 @@ export async function GET(req: NextRequest) {
       let assignedGroupId;
       
       // 优先选择处理方式：
-      // 1. 如果有rootParentId，优先使用rootParentId对应的组ID
-      if (img.rootParentId && rootParentIdToGroupId[img.rootParentId]) {
+      // 1. 如果图片类型是"uploaded"，则它自身就是一个组
+      if (img.type === "uploaded") {
+        assignedGroupId = img.id;
+        originalImageCount++;
+        console.log(`发现上传图片 #${originalImageCount}: ${formattedImg.id}, 提示词="${formattedImg.prompt}"`);
+        
+        // 确保这个上传图片ID被映射到自己的组ID
+        rootParentIdToGroupId[img.id] = img.id;
+        console.log(`上传图片 ${formattedImg.id} 映射到自身组ID`);
+        
+        // 如果这个上传图片有rootParentId，也更新映射
+        if (img.rootParentId) {
+          rootParentIdToGroupId[img.rootParentId] = img.id;
+          console.log(`上传图片 ${formattedImg.id} 有rootParentId=${img.rootParentId}，更新映射关系`);
+        }
+      }
+      // 2. 如果有rootParentId，优先使用rootParentId对应的组ID
+      else if (img.rootParentId && rootParentIdToGroupId[img.rootParentId]) {
         // 如果有rootParentId并且已经有映射到组ID
         assignedGroupId = rootParentIdToGroupId[img.rootParentId];
         console.log(`使用rootParentId=${img.rootParentId}确定图片${img.id}应放入组${assignedGroupId}`);
       } 
-      // 2. 原始图片特殊处理，使用其ID作为组ID
+      // 3. 如果没有parentId，则可能是原始图片（但不是上传图片）
       else if (!img.parentId) {
         // 原始图片，直接以id作为组ID
         originalImageCount++;
         assignedGroupId = img.id;
-        console.log(`原始图片 #${originalImageCount}: ${formattedImg.id}, 提示词="${formattedImg.prompt}"`);
+        console.log(`原始图片(非上传) #${originalImageCount}: ${formattedImg.id}, 提示词="${formattedImg.prompt}"`);
         
-        // 如果这张原始图片有rootParentId，更新映射 - 这很重要
+        // 如果这张原始图片有rootParentId，更新映射
         if (img.rootParentId) {
           rootParentIdToGroupId[img.rootParentId] = assignedGroupId;
           console.log(`原始图片 ${formattedImg.id} 有rootParentId=${img.rootParentId}，更新映射关系`);
         }
       }
-      // 3. 编辑图片，使用rootParentId或parentId
+      // 4. 编辑图片，使用rootParentId或parentId
       else {
         // 编辑结果图片
         editedImageCount++;
@@ -353,8 +369,8 @@ export async function GET(req: NextRequest) {
           
           if (!imageGroups[assignedGroupId]) {
             imageGroups[assignedGroupId] = {
-              original: null,
-              edits: [],
+              original: null,  // 初始为空
+              edits: [],   // 将当前图片添加到编辑列表
               editHistory: []
             };
             console.log(`创建新组 ${assignedGroupId} 用于孤立的编辑历史记录`);

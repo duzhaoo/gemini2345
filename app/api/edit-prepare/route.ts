@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
       const imageMetadata = await getImageMetadataFromFeishu(imageId);
       
       // 输出详细的日志，便于调试
-      console.log(`获取到图片元数据: ID=${imageId}, fileToken=${imageMetadata.fileToken}, parentId=${imageMetadata.parentId}, rootParentId=${imageMetadata.rootParentId}`);
+      console.log(`获取到图片元数据: ID=${imageId}, fileToken=${imageMetadata.fileToken}, parentId=${imageMetadata.parentId}, rootParentId=${imageMetadata.rootParentId}, type=${imageMetadata.isUploadedImage ? "uploaded" : "generated"}`);
       
       // 检查parentId是否看起来像图片ID（UUID格式）而不是fileToken
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -192,8 +192,13 @@ export async function POST(req: NextRequest) {
       // 对于rootParentId，需要确保它是一个有效的UUID
       let actualRootParentId = imageId; // 默认使用当前图片ID
       
-      // 如果有有效的rootParentId，则使用它
-      if (imageMetadata.rootParentId && uuidRegex.test(imageMetadata.rootParentId)) {
+      // 改进rootParentId的处理逻辑
+      if (imageMetadata.isUploadedImage) {
+        // 如果当前图片是上传图片，则它自身就是rootParentId
+        actualRootParentId = imageId;
+        console.log(`当前图片是上传图片，使用其ID作为rootParentId: ${imageId}`);
+      } else if (imageMetadata.rootParentId && uuidRegex.test(imageMetadata.rootParentId)) {
+        // 如果当前图片不是上传图片，但有有效的rootParentId，则使用它
         actualRootParentId = imageMetadata.rootParentId;
         console.log(`使用有效的rootParentId: ${actualRootParentId}`);
       } else if (imageMetadata.rootParentId) {

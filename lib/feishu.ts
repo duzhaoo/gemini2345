@@ -558,7 +558,8 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
               timestamp: String(timestamp),
               parentId: String(fields.parentId || ''),
               rootParentId: String(fields.rootParentId || ''),
-              type: String(fields.type || 'generated')
+              type: String(fields.type || 'generated'),
+              isUploadedImage: String(fields.type || '') === 'uploaded'
             };
             
             // 将记录保存到缓存中
@@ -580,7 +581,8 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
         timestamp: String(Date.now()),  // 转换为字符串类型
         parentId: '',  // 空字符串而非null
         rootParentId: '',  // 空字符串而非null
-        type: 'uploaded'
+        type: 'uploaded',
+        isUploadedImage: true
       };
     }
     
@@ -649,7 +651,8 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
             timestamp: String(timestamp),
             parentId: String(fields.parentId || ''),
             rootParentId: String(fields.rootParentId || ''),
-            type: String(fields.type || 'generated')
+            type: String(fields.type || 'generated'),
+            isUploadedImage: String(fields.type || '') === 'uploaded'
           };
         }
       }
@@ -695,7 +698,8 @@ export async function getImageRecordById(imageId: string, skipCache = false) {
               timestamp: String(timestamp),
               parentId: String(fields.parentId || ''),
               rootParentId: String(fields.rootParentId || ''),
-              type: String(fields.type || 'generated')
+              type: String(fields.type || 'generated'),
+              isUploadedImage: String(fields.type || '') === 'uploaded'
             };
           }
         }
